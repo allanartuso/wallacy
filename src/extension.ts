@@ -66,10 +66,11 @@ export function activate(context: vscode.ExtensionContext) {
       // Display a message box to the user
       vscode.window.showInformationMessage("Hello World from Wallacy!");
     }),
-    vscode.commands.registerCommand("test-runner.smartStart", () => {
+    vscode.commands.registerCommand("wallacy.smartStart", () => {
+      vscode.window.showInformationMessage("Hello smartStartCommand!");
       smartStartCommand?.execute();
     }),
-    vscode.commands.registerCommand("test-runner.stopEngine", async () => {
+    vscode.commands.registerCommand("wallacy.stopEngine", async () => {
       smartStartCommand?.dispose();
       if (engineCleanup) {
         await engineCleanup();

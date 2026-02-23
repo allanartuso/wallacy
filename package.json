@@ -15,7 +15,7 @@
     "commands": [
       {
         "command": "wallacy.helloWorld",
-        "title": "Hello World"
+        "title": "Wallacy: Hello World"
       },
       {
         "command": "wallacy.smartStart",

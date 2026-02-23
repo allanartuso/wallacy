@@ -109,6 +109,7 @@ export class IPCServer {
 
   private handleIncoming(ws: WebSocket, data: string): void {
     try {
+      console.log("[Server] handleIncoming");
       const envelope = JSON.parse(data) as IPCEnvelope;
       const handler = this.handlers.get(envelope.type as IPCMessageType);
 
