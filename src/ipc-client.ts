@@ -51,12 +51,18 @@ export class IPCClient {
     });
   }
 
-  send(type: string, payload: any) {
+  send(type: string, payload: unknown) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      console.log("WS opened");
-      this.ws.send(
-        JSON.stringify({ type, payload, id: Date.now().toString() }),
-      );
+      this.outputChannel.appendLine("WS opened");
+      const stringified = JSON.stringify({
+        type,
+        payload,
+        id: Date.now().toString(),
+      });
+      this.outputChannel.appendLine(stringified);
+
+      this.ws.send(stringified);
+      this.outputChannel.appendLine("ws sent");
     } else {
       this.outputChannel.appendLine("[IPC] Cannot send message, not connected");
     }

@@ -16,7 +16,7 @@ export class SmartStartCommand {
   private disposed = false;
 
   constructor(
-    context: vscode.ExtensionContext,
+    context: vscode.ExtensionContext | undefined,
     client: IPCClient,
     outputChannel: vscode.OutputChannel,
     engineInitializer?: () => Promise<number>,
@@ -52,6 +52,7 @@ export class SmartStartCommand {
 
     // Listen for errors
     this.ipcClient.on("error", (payload: any) => {
+      this.outputChannel.appendLine(JSON.stringify(payload));
       this.handleEngineError(payload);
     });
   }
@@ -100,6 +101,7 @@ export class SmartStartCommand {
     if (!this.session) {
       this.session = new SmartStartSession(this.workspaceRoot);
     }
+    await this.ensureEngineRunning();
 
     if (this.ipcClient.isConnected()) {
       // Already connected — just send the request immediately
