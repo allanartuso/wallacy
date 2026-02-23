@@ -172,6 +172,14 @@ export async function startCoreEngine(
     bufferSync.applyBufferUpdate(filePath, content);
   });
 
+  server.onMessage("file-changed", async (payload: any) => {
+    const { filePath } = payload;
+    console.log(`[Core Engine] File changed notification: ${filePath}`);
+
+    // Trigger scheduler to rerun tests for this file
+    await scheduler.onFilesChanged([filePath]);
+  });
+
   server.onMessage("run-all-tests", async () => {
     console.log("[Core Engine] Run all tests requested");
     const allProjects = await workspaceResolver.getAllProjects();

@@ -9,7 +9,11 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:wallacy.smartStart",
+    "onCommand:wallacy.helloWorld",
+    "onCommand:wallacy.stopEngine"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
@@ -21,6 +25,14 @@
         "command": "wallacy.smartStart",
         "title": "Wallacy: Smart Start",
         "icon": "$(play)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "wallacy.smartStart",
+        "key": "ctrl+shift+t",
+        "mac": "cmd+shift+t",
+        "when": "editorFocus && resourceLangId =~ /^(typescript|javascript|typescriptreact|javascriptreact)$/"
       }
     ]
   },
