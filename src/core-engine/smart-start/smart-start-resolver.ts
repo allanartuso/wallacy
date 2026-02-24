@@ -89,19 +89,35 @@ export class SmartStartResolver {
     filePath: string,
     includeDependents = true,
   ): Promise<SmartStartResult> {
+    console.log(`[SmartStartResolver] Resolving: ${filePath}`);
+
     // Step 1: Map to closest project
     const projects = await this.fileMapper.mapFileToProjects(filePath);
+    console.log(
+      `[SmartStartResolver] Found ${projects.length} project(s) for file`,
+    );
+
     if (projects.length === 0) {
       throw new UnownedFileError(filePath);
     }
+
     const project = projects[0]; // closest by depth
+    console.log(
+      `[SmartStartResolver] Selected project: ${project.name} (root: ${project.root})`,
+    );
 
     // Step 2: Detect test framework
     const testFramework = await this.detectFramework(project);
+    console.log(`[SmartStartResolver] Detected framework: ${testFramework}`);
 
     // Step 3: Resolve test target and config path
     const testTarget = this.resolveTestTarget(project);
+    console.log(`[SmartStartResolver] Test target: ${testTarget}`);
+
     const configPath = await this.resolveConfigPath(project, testFramework);
+    console.log(
+      `[SmartStartResolver] Config path: ${configPath || "(none found)"}`,
+    );
 
     // Step 4: Compute transitive dependents
     let dependents: string[] = [];
@@ -109,8 +125,10 @@ export class SmartStartResolver {
       dependents = await this.workspaceResolver.getTransitiveDependents(
         project.name,
       );
+      console.log(`[SmartStartResolver] Found ${dependents.length} dependents`);
     }
 
+    console.log(`[SmartStartResolver] Resolution complete`);
     return {
       project,
       testFramework,
@@ -135,15 +153,21 @@ export class SmartStartResolver {
   async detectFramework(project: NxProjectInfo): Promise<TestFrameworkName> {
     // Strategy 1: Check executor in test target
     const fromExecutor = this.detectFromExecutor(project);
-    if (fromExecutor) return fromExecutor;
+    if (fromExecutor) {
+      return fromExecutor;
+    }
 
     // Strategy 2: Check config files
     const fromConfig = await this.detectFromConfigFiles(project);
-    if (fromConfig) return fromConfig;
+    if (fromConfig) {
+      return fromConfig;
+    }
 
     // Strategy 3: Check package.json devDependencies
     const fromDeps = await this.detectFromDependencies(project);
-    if (fromDeps) return fromDeps;
+    if (fromDeps) {
+      return fromDeps;
+    }
 
     // Default fallback
     return "jest";
@@ -152,20 +176,36 @@ export class SmartStartResolver {
   // ─── Private helpers ──────────────────────────────────────
 
   private detectFromExecutor(project: NxProjectInfo): TestFrameworkName | null {
+    if (!project.targets) {
+      return null;
+    }
+
     for (const targetName of TEST_TARGET_NAMES) {
       const target = project.targets[targetName];
       if (target?.executor) {
         const framework = EXECUTOR_FRAMEWORK_MAP[target.executor];
-        if (framework) return framework;
+        if (framework) {
+          return framework;
+        }
       }
     }
 
     // Also check all targets, not just known names
-    for (const target of Object.values(project.targets)) {
-      if (target?.executor) {
-        const framework = EXECUTOR_FRAMEWORK_MAP[target.executor];
-        if (framework) return framework;
+    try {
+      for (const target of Object.values(project.targets)) {
+        if (target?.executor) {
+          const framework = EXECUTOR_FRAMEWORK_MAP[target.executor];
+          if (framework) {
+            return framework;
+          }
+        }
       }
+    } catch (e) {
+      // Ignore if targets is not iterable
+      console.warn(
+        `[SmartStartResolver] Error iterating targets for project ${project.name}:`,
+        e,
+      );
     }
 
     return null;
@@ -202,7 +242,9 @@ export class SmartStartResolver {
 
     for (const pkgPath of searchPaths) {
       const framework = await this.checkPackageJsonForFramework(pkgPath);
-      if (framework) return framework;
+      if (framework) {
+        return framework;
+      }
     }
 
     return null;
@@ -223,9 +265,15 @@ export class SmartStartResolver {
       };
 
       // Check in order of specificity
-      if (allDeps["vitest"]) return "vitest";
-      if (allDeps["jest"] || allDeps["@jest/core"]) return "jest";
-      if (allDeps["jasmine"] || allDeps["jasmine-core"]) return "jasmine";
+      if (allDeps["vitest"]) {
+        return "vitest";
+      }
+      if (allDeps["jest"] || allDeps["@jest/core"]) {
+        return "jest";
+      }
+      if (allDeps["jasmine"] || allDeps["jasmine-core"]) {
+        return "jasmine";
+      }
     } catch {
       // File doesn't exist or is invalid JSON — skip
     }

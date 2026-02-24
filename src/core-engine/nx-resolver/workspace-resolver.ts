@@ -56,9 +56,25 @@ export const createDefaultDevkitBridge = (): NxDevkitBridge => ({
   async createProjectGraphAsync(
     workspaceRoot: string,
   ): Promise<NxProjectGraph> {
-    // Dynamic import so the module can be tested without Nx installed
-    // Sets the workspace root so Nx resolves the correct workspace
-    return {} as unknown as NxProjectGraph;
+    // Try to load Nx project graph ONLY if this is actually an Nx workspace
+    // For non-Nx workspaces, return empty graph and let FileToProjectMapper
+    // discover projects from file system instead
+    try {
+      // Dynamic require to avoid hard dependency on @nx/devkit at compile time
+      const { createProjectGraphAsync: createGraph } = require("@nx/devkit");
+      process.chdir(workspaceRoot);
+      const graph = await createGraph({ exitOnError: false });
+      console.log(
+        `[NxWorkspaceResolver] Loaded Nx project graph with ${Object.keys(graph.nodes || {}).length} projects`,
+      );
+      return graph as NxProjectGraph;
+    } catch (error: any) {
+      console.log(
+        `[NxWorkspaceResolver] Not an Nx workspace - will use file system discovery: ${error?.message}`,
+      );
+      // Return empty graph - let FileToProjectMapper handle file system discovery
+      return { nodes: {}, dependencies: {} };
+    }
   },
 });
 

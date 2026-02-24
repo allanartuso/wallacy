@@ -1,184 +1,106 @@
 import * as path from "path";
-import * as vscode from "vscode";
+import Container, { Service } from "typedi";
+import { FileSystemWatcher } from "vscode";
 import { IPCClient } from "./ipc-client";
+import type { SmartStartResult } from "./shared-types";
 import { SmartStartSession } from "./smart-start-session";
 import { isTestFile } from "./test-utils";
-import type { SmartStartResult } from "./shared-types";
+import { VsCodeService } from "./vs-code.service";
 
+@Service()
 export class SmartStartCommand {
-  private ipcClient: IPCClient;
-  private outputChannel: vscode.OutputChannel;
+  private readonly vsCodeService = Container.get(VsCodeService);
+  private readonly iPCClient = Container.get(IPCClient);
+
   private pendingSmartStartFile: string | null = null;
-  private engineInitializer: (() => Promise<number>) | null = null;
   private session: SmartStartSession | null = null;
-  private fileWatcher: vscode.FileSystemWatcher | null = null;
+  private fileWatcher: FileSystemWatcher | null = null;
   private workspaceRoot: string | null = null;
   private disposed = false;
 
-  constructor(
-    context: vscode.ExtensionContext | undefined,
-    client: IPCClient,
-    outputChannel: vscode.OutputChannel,
-    engineInitializer?: () => Promise<number>,
-  ) {
-    this.outputChannel = outputChannel;
-    this.ipcClient = client;
-    this.engineInitializer = engineInitializer || null;
-
-    // Setup IPC listeners for smart start responses
+  constructor() {
     this.setupIPCHandlers();
   }
 
-  private setupIPCHandlers() {
+  setupIPCHandlers() {
     // Listen for smart-start responses from the engine
-    this.ipcClient.on("smart-start-response", (payload: any) => {
+    this.iPCClient.on("smart-start-response", (payload: any) => {
       this.handleSmartStartResponse(payload);
     });
-
     // Listen for test discovery
-    this.ipcClient.on("test-discovery", (payload: any) => {
+    this.iPCClient.on("test-discovery", (payload: any) => {
       this.handleTestDiscovery(payload);
     });
-
     // Listen for test results
-    this.ipcClient.on("test-result", (payload: any) => {
+    this.iPCClient.on("test-result", (payload: any) => {
       this.handleTestResult(payload);
     });
-
     // Listen for test run complete
-    this.ipcClient.on("test-run-complete", (payload: any) => {
+    this.iPCClient.on("test-run-complete", (payload: any) => {
       this.handleTestRunComplete(payload);
     });
-
     // Listen for errors
-    this.ipcClient.on("error", (payload: any) => {
-      this.outputChannel.appendLine(JSON.stringify(payload));
+    this.iPCClient.on("error", (payload: any) => {
+      this.vsCodeService.appendLine(JSON.stringify(payload));
       this.handleEngineError(payload);
     });
+    this.vsCodeService.showInformationMessage("SmartStart has started");
   }
 
   async execute() {
+    this.vsCodeService.showInformationMessage("Hello smartStartCommand!");
+    this.vsCodeService.appendLine("[Extension] Smart Start initiated");
+
     if (this.disposed) {
-      vscode.window.showErrorMessage("SmartStart has been disposed");
+      this.vsCodeService.showErrorMessage("SmartStart has been disposed");
       return;
     }
 
-    this.outputChannel.show(true);
-    const editor = vscode.window.activeTextEditor;
+    this.vsCodeService.show(true);
+
+    const editor = this.vsCodeService.activeTextEditor;
     if (!editor) {
-      vscode.window.showErrorMessage("No active editor found");
+      this.vsCodeService.showErrorMessage("No active editor found");
       return;
     }
 
     const filePath = editor.document.uri.fsPath;
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(
+    const workspaceFolder = this.vsCodeService.getWorkspaceFolder(
       editor.document.uri,
     );
 
-    console.log(
-      "[Extension] Smart Start initiated for: ",
-      editor.document.uri,
-      workspaceFolder?.uri.fsPath,
-      filePath,
+    this.vsCodeService.appendLine(
+      "[Extension] Smart Start initiated for: " + editor.document.uri.fsPath,
     );
 
     if (!workspaceFolder) {
-      vscode.window.showErrorMessage("File is not part of a workspace");
+      this.vsCodeService.showErrorMessage("File is not part of a workspace");
       return;
     }
 
     this.workspaceRoot = workspaceFolder.uri.fsPath;
 
-    // Check if it's a test file
     if (!isTestFile(filePath)) {
-      vscode.window.showErrorMessage(
+      this.vsCodeService.showErrorMessage(
         `${path.basename(filePath)} is not a test file (.test.ts, .spec.ts, etc)`,
       );
       return;
     }
 
-    // Initialize session
     if (!this.session) {
       this.session = new SmartStartSession(this.workspaceRoot);
     }
-    await this.ensureEngineRunning();
 
-    if (this.ipcClient.isConnected()) {
-      // Already connected — just send the request immediately
-      this.outputChannel.appendLine(
-        `[Extension] Sending smart-start-request for: ${path.basename(filePath)} - ${filePath}`,
-      );
-      this.ipcClient.send("smart-start-request", { file: filePath });
-    } else {
-      // Not connected — initialize the engine, then send when connected
-      this.pendingSmartStartFile = filePath;
-      await this.ensureEngineRunning();
-    }
-
-    vscode.window.showInformationMessage(
+    this.vsCodeService.showInformationMessage(
       `Smart Start initiated for: ${path.basename(filePath)}`,
     );
-  }
-
-  private async ensureEngineRunning() {
-    if (!this.engineInitializer) {
-      this.outputChannel.appendLine(
-        "[Extension] Engine initializer not provided",
-      );
-      vscode.window.showErrorMessage(
-        "Failed to initialize Test Engine: Engine not configured",
-      );
-      return;
-    }
-
-    this.outputChannel.appendLine("[Extension] Initializing Core Engine...");
-    try {
-      const port = await this.engineInitializer();
-      this.outputChannel.appendLine(
-        `[Extension] Connecting to engine on port ${port}...`,
-      );
-      await this.connectIPC(port);
-    } catch (err: any) {
-      this.outputChannel.appendLine(
-        `[Extension] Failed to initialize engine: ${err?.message}`,
-      );
-      vscode.window.showErrorMessage(
-        `Failed to initialize Test Engine: ${err?.message}. Check the output panel for details.`,
-      );
-    }
-  }
-
-  private async connectIPC(port: number) {
-    try {
-      await this.ipcClient.connect(port);
-      this.outputChannel.appendLine("[Extension] Connected to engine!");
-      vscode.window.setStatusBarMessage("Connected to Test Engine", 3000);
-
-      // Now that we're connected, send the pending smart start request
-      if (this.pendingSmartStartFile) {
-        this.outputChannel.appendLine(
-          `[Extension] Sending deferred smart-start-request for: ${this.pendingSmartStartFile}`,
-        );
-        this.ipcClient.send("smart-start-request", {
-          file: this.pendingSmartStartFile,
-        });
-        this.pendingSmartStartFile = null;
-      }
-    } catch (e: any) {
-      this.outputChannel.appendLine(
-        `[Extension] IPC connection failed: ${e?.message}`,
-      );
-      vscode.window.showErrorMessage(
-        "Failed to connect to Test Engine. Check the output panel for details.",
-      );
-    }
   }
 
   /**
    * Handle smart-start-response from the engine
    */
   private handleSmartStartResponse(payload: SmartStartResult) {
-    this.outputChannel.appendLine(
+    this.vsCodeService.appendLine(
       `[Extension] Smart Start resolved: ${payload.project.name} (${payload.testFramework})`,
     );
 
@@ -198,7 +120,7 @@ export class SmartStartCommand {
     }
 
     // Show project and framework info
-    vscode.window.showInformationMessage(
+    this.vsCodeService.showInformationMessage(
       `Running tests in ${payload.project.name} (${payload.testFramework})`,
     );
   }
@@ -208,12 +130,12 @@ export class SmartStartCommand {
    */
   private handleTestDiscovery(payload: any) {
     const tests = payload as any[];
-    this.outputChannel.appendLine(
+    this.vsCodeService.appendLine(
       `[Extension] Discovered ${tests.length} test(s)`,
     );
 
     if (tests.length > 0) {
-      this.outputChannel.appendLine(
+      this.vsCodeService.appendLine(
         `[Extension] Test files: ${tests.map((t) => path.basename(t.file)).join(", ")}`,
       );
     }
@@ -226,12 +148,12 @@ export class SmartStartCommand {
     const result = payload as any;
     const statusIcon =
       result.status === "passed" ? "✓" : result.status === "failed" ? "✗" : "○";
-    this.outputChannel.appendLine(
+    this.vsCodeService.appendLine(
       `[Extension] ${statusIcon} ${result.name} (${result.duration}ms)`,
     );
 
     if (result.status === "failed" && result.error) {
-      this.outputChannel.appendLine(
+      this.vsCodeService.appendLine(
         `[Extension] Error: ${result.error.message}`,
       );
     }
@@ -241,18 +163,20 @@ export class SmartStartCommand {
    * Handle test run completion
    */
   private handleTestRunComplete(payload: any) {
-    this.outputChannel.appendLine(`[Extension] Test run complete`);
-    vscode.window.setStatusBarMessage("Test run complete", 3000);
+    this.vsCodeService.appendLine(`[Extension] Test run complete`);
+    this.vsCodeService.setStatusBarMessage("Test run complete", 3000);
   }
 
   /**
    * Handle engine errors
    */
   private handleEngineError(payload: any) {
-    this.outputChannel.appendLine(
+    this.vsCodeService.appendLine(
       `[Extension] Engine error: ${payload.message}`,
     );
-    vscode.window.showErrorMessage(`Test Engine error: ${payload.message}`);
+    this.vsCodeService.showErrorMessage(
+      `Test Engine error: ${payload.message}`,
+    );
   }
 
   /**
@@ -269,30 +193,30 @@ export class SmartStartCommand {
     }
 
     // Create a new watcher for all test files
-    const testFilePattern = new vscode.RelativePattern(
+    const testFilePattern = this.vsCodeService.createRelativePattern(
       this.workspaceRoot,
       "**/*.{test,spec}.{ts,js,tsx,jsx,mts,mjs}",
     );
 
     this.fileWatcher =
-      vscode.workspace.createFileSystemWatcher(testFilePattern);
+      this.vsCodeService.createFileSystemWatcher(testFilePattern);
 
     // On file change, send file change notification to engine
     this.fileWatcher.onDidChange((uri) => {
       const filePath = uri.fsPath;
-      this.outputChannel.appendLine(
+      this.vsCodeService.appendLine(
         `[Extension] Test file changed: ${path.basename(filePath)}`,
       );
 
       // Check if this file is part of the same session
       if (this.session?.shouldRunInSameSession(filePath)) {
-        this.ipcClient.send("file-changed", {
+        this.iPCClient.send("file-changed", {
           filePath: filePath,
         });
       }
     });
 
-    this.outputChannel.appendLine(
+    this.vsCodeService.appendLine(
       `[Extension] File watcher started for test files`,
     );
   }
@@ -302,7 +226,9 @@ export class SmartStartCommand {
     if (this.fileWatcher) {
       this.fileWatcher.dispose();
     }
-    this.ipcClient.disconnect();
+    this.iPCClient.disconnect();
     this.session?.clearSession();
+
+    this.vsCodeService.appendLine("[Extension] SmartStartCommand disposed");
   }
 }

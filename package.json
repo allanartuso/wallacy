@@ -76,8 +76,10 @@
     "@babel/parser": "^7.29.0",
     "@babel/traverse": "^7.29.0",
     "chokidar": "^5.0.0",
+    "reflect-metadata": "^0.2.2",
     "source-map": "^0.7.6",
     "ts-node": "^10.9.2",
+    "typedi": "^0.10.0",
     "vitest": "^4.0.18",
     "ws": "^8.19.0"
   }

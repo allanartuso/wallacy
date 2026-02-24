@@ -9,9 +9,7 @@
  */
 
 import * as path from "path";
-import * as fs from "node:fs/promises";
 import type { SmartStartResult } from "./shared-types";
-import { getConfigFilePatterns, getTsconfigFileNames } from "./test-utils";
 
 export interface SessionFile {
   absolutePath: string;

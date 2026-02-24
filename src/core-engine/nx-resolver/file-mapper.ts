@@ -1,9 +1,11 @@
 // ============================================================
 // FileToProjectMapper — Maps any file path to its owning
 // Nx project(s), ordered by proximity (deepest root first).
+// Falls back to file-system discovery for non-Nx projects.
 // ============================================================
 
 import * as path from "node:path";
+import * as fs from "node:fs/promises";
 import type { NxWorkspaceResolver } from "./workspace-resolver";
 import { NxProjectInfo } from "../../shared-types";
 
@@ -23,15 +25,39 @@ export class FileToProjectMapper {
    * Map a file path to its owning Nx project(s).
    *
    * Algorithm:
-   * 1. Normalize the path relative to workspace root
-   * 2. For each project, check if the file is under project.root
-   * 3. If multiple matches (nested projects), sort by descending depth
-   *    (deepest/closest project root wins, first element)
+   * 1. If this is an Nx workspace, use Nx project graph
+   * 2. Otherwise, discover project from file system (config files, package.json)
+   * 3. Walk up directory tree from file to find project root
    *
-   * @returns NxProjectInfo[] ordered by proximity (closest first). Empty if unowned.
+   * @returns NxProjectInfo[] ordered by proximity (closest first).
    */
   async mapFileToProjects(absoluteFilePath: string): Promise<NxProjectInfo[]> {
     const workspaceRoot = this.workspaceResolver.getWorkspaceRoot();
+
+    // Try Nx first - check if workspace.json or nx.json exists
+    const isNxWorkspace = await this.isNxWorkspace(workspaceRoot);
+    console.log(
+      `[FileToProjectMapper] Checking if Nx workspace: ${isNxWorkspace}`,
+    );
+
+    if (isNxWorkspace) {
+      return this.mapFileToProjectsNx(absoluteFilePath, workspaceRoot);
+    } else {
+      // Non-Nx workspace: discover project from file system
+      return this.discoverProjectFromFileSystem(
+        absoluteFilePath,
+        workspaceRoot,
+      );
+    }
+  }
+
+  /**
+   * Use Nx project graph to map file to projects
+   */
+  private async mapFileToProjectsNx(
+    absoluteFilePath: string,
+    workspaceRoot: string,
+  ): Promise<NxProjectInfo[]> {
     const relativePath = this.normalizeToRelative(
       absoluteFilePath,
       workspaceRoot,
@@ -55,6 +81,136 @@ export class FileToProjectMapper {
     });
 
     return matchingProjects;
+  }
+
+  /**
+   * For non-Nx workspaces: discover project by walking up directory tree
+   * looking for package.json and test config files
+   */
+  private async discoverProjectFromFileSystem(
+    absoluteFilePath: string,
+    workspaceRoot: string,
+  ): Promise<NxProjectInfo[]> {
+    console.log(
+      `[FileToProjectMapper] Discovering project from file system for: ${path.basename(absoluteFilePath)}`,
+    );
+
+    // Walk up from file location to find project root (where package.json is)
+    const projectRoot = await this.findProjectRoot(
+      absoluteFilePath,
+      workspaceRoot,
+    );
+
+    if (!projectRoot) {
+      console.log(`[FileToProjectMapper] Could not find project root`);
+      return [];
+    }
+
+    console.log(`[FileToProjectMapper] Found project root: ${projectRoot}`);
+
+    // Create synthetic project based on discovered file system structure
+    const syntheticProject: NxProjectInfo = {
+      name: path.basename(projectRoot) || "workspace-root",
+      root: projectRoot,
+      sourceRoot: projectRoot,
+      targets: {
+        test: { executor: "vitest:test" }, // placeholder, will detect real framework
+      },
+      tags: [],
+      implicitDependencies: [],
+      projectType: "application",
+    };
+
+    return [syntheticProject];
+  }
+
+  /**
+   * Walk up directory tree to find project root
+   * Look for: package.json, vitest.config.*, jest.config.*, tsconfig.json
+   */
+  private async findProjectRoot(
+    filePath: string,
+    workspaceRoot: string,
+  ): Promise<string | null> {
+    let currentDir = path.dirname(filePath);
+    const maxIterations = 20; // Avoid infinite loops
+    let iterations = 0;
+
+    while (currentDir.startsWith(workspaceRoot) && iterations < maxIterations) {
+      iterations++;
+
+      // Check for package.json (strong indicator of project root)
+      if (await this.fileExists(path.join(currentDir, "package.json"))) {
+        console.log(
+          `[FileToProjectMapper] Found package.json at: ${currentDir}`,
+        );
+        return currentDir;
+      }
+
+      // Check for test config files
+      const configFiles = [
+        "vitest.config.ts",
+        "vitest.config.js",
+        "vitest.config.mjs",
+        "vite.config.ts",
+        "jest.config.ts",
+        "jest.config.js",
+        "jest.config.json",
+        "tsconfig.json",
+      ];
+
+      for (const configFile of configFiles) {
+        if (await this.fileExists(path.join(currentDir, configFile))) {
+          console.log(
+            `[FileToProjectMapper] Found ${configFile} at: ${currentDir}`,
+          );
+          return currentDir;
+        }
+      }
+
+      // Move up one directory
+      const parentDir = path.dirname(currentDir);
+      if (parentDir === currentDir) {
+        // Reached root of file system
+        break;
+      }
+      currentDir = parentDir;
+    }
+
+    // Fallback: return workspace root as project root
+    console.log(
+      `[FileToProjectMapper] Falling back to workspace root: ${workspaceRoot}`,
+    );
+    return workspaceRoot;
+  }
+
+  /**
+   * Check if workspace root contains Nx config
+   */
+  private async isNxWorkspace(workspaceRoot: string): Promise<boolean> {
+    // Check for workspace.json or nx.json
+    const nxConfigFiles = ["workspace.json", "nx.json"];
+
+    for (const configFile of nxConfigFiles) {
+      if (await this.fileExists(path.join(workspaceRoot, configFile))) {
+        console.log(`[FileToProjectMapper] Found Nx config: ${configFile}`);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if file exists
+   */
+  private async fileExists(filePath: string): Promise<boolean> {
+    try {
+      await fs.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -115,12 +271,16 @@ export class FileToProjectMapper {
   }
 
   private isUnderDirectory(filePath: string, dirPath: string): boolean {
-    if (dirPath === "" || dirPath === ".") return true;
+    if (dirPath === "" || dirPath === ".") {
+      return true;
+    }
     return filePath.startsWith(dirPath + "/") || filePath === dirPath;
   }
 
   private getPathDepth(p: string): number {
-    if (p === "" || p === ".") return 0;
+    if (p === "" || p === ".") {
+      return 0;
+    }
     return p.split("/").filter(Boolean).length;
   }
 }
