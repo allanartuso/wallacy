@@ -3,7 +3,8 @@
 // caches the Nx project graph using official @nx/devkit APIs.
 // ============================================================
 
-import { NxProjectInfo, TargetConfiguration } from "../../shared-types";
+import {Service} from "typedi";
+import {NxProjectInfo, TargetConfiguration} from "../../shared-types";
 
 // ─── Types for the Nx devkit API surface we consume ─────────
 
@@ -53,40 +54,37 @@ export interface NxDevkitBridge {
 // ─── Default bridge using real @nx/devkit ───────────────────
 
 export const createDefaultDevkitBridge = (): NxDevkitBridge => ({
-  async createProjectGraphAsync(
-    workspaceRoot: string,
-  ): Promise<NxProjectGraph> {
+  async createProjectGraphAsync(workspaceRoot: string): Promise<NxProjectGraph> {
     // Try to load Nx project graph ONLY if this is actually an Nx workspace
     // For non-Nx workspaces, return empty graph and let FileToProjectMapper
     // discover projects from file system instead
     try {
       // Dynamic require to avoid hard dependency on @nx/devkit at compile time
-      const { createProjectGraphAsync: createGraph } = require("@nx/devkit");
+      const {createProjectGraphAsync: createGraph} = require("@nx/devkit");
       process.chdir(workspaceRoot);
-      const graph = await createGraph({ exitOnError: false });
+      const graph = await createGraph({exitOnError: false});
       console.log(
         `[NxWorkspaceResolver] Loaded Nx project graph with ${Object.keys(graph.nodes || {}).length} projects`,
       );
       return graph as NxProjectGraph;
     } catch (error: any) {
-      console.log(
-        `[NxWorkspaceResolver] Not an Nx workspace - will use file system discovery: ${error?.message}`,
-      );
+      console.log(`[NxWorkspaceResolver] Not an Nx workspace - will use file system discovery: ${error?.message}`);
       // Return empty graph - let FileToProjectMapper handle file system discovery
-      return { nodes: {}, dependencies: {} };
+      return {nodes: {}, dependencies: {}};
     }
   },
 });
 
 // ─── NxWorkspaceResolver ────────────────────────────────────
 
+@Service()
 export class NxWorkspaceResolver {
   private cachedGraph: NxProjectGraph | null = null;
   private cachedProjects: Map<string, NxProjectInfo> = new Map();
   private cacheTimestamp = 0;
 
   constructor(
-    private readonly workspaceRoot: string,
+    private readonly workspaceRoot: string = "",
     private readonly devkit: NxDevkitBridge = createDefaultDevkitBridge(),
     private readonly cacheTtlMs: number = 30_000,
   ) {}
@@ -100,9 +98,7 @@ export class NxWorkspaceResolver {
     if (this.cachedGraph && now - this.cacheTimestamp < this.cacheTtlMs) {
       return this.cachedGraph;
     }
-    this.cachedGraph = await this.devkit.createProjectGraphAsync(
-      this.workspaceRoot,
-    );
+    this.cachedGraph = await this.devkit.createProjectGraphAsync(this.workspaceRoot);
     this.cacheTimestamp = now;
     this.rebuildProjectMap();
     return this.cachedGraph;

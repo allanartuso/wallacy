@@ -9,7 +9,8 @@
  */
 
 import * as path from "path";
-import type { SmartStartResult } from "./shared-types";
+import {Service} from "typedi";
+import type {SmartStartResult} from "./shared-types";
 
 export interface SessionFile {
   absolutePath: string;
@@ -18,13 +19,18 @@ export interface SessionFile {
   configPath: string | null;
 }
 
+@Service()
 export class SmartStartSession {
   private currentFile: SessionFile | null = null;
   private smartStartResult: SmartStartResult | null = null;
   private configDirectory: string | null = null;
-  private workspaceRoot: string;
 
-  constructor(workspaceRoot: string) {
+  constructor(private workspaceRoot: string = "") {}
+
+  /**
+   * Set the workspace root (used when workspace root is known later).
+   */
+  setWorkspaceRoot(workspaceRoot: string): void {
     this.workspaceRoot = workspaceRoot;
   }
 
@@ -32,6 +38,10 @@ export class SmartStartSession {
    * Initialize session with a test file and smart start result
    */
   initializeSession(testFile: string, result: SmartStartResult): void {
+    if (!this.workspaceRoot) {
+      throw new Error("SmartStartSession not initialized. Call setWorkspaceRoot() first.");
+    }
+
     this.currentFile = {
       absolutePath: testFile,
       relativePath: path.relative(this.workspaceRoot, testFile),

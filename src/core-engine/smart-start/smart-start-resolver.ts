@@ -6,18 +6,14 @@
 // the continuous test engine scoped to that project.
 // ============================================================
 
-import * as path from "node:path";
 import * as fs from "node:fs";
-import type { NxWorkspaceResolver } from "../nx-resolver/workspace-resolver";
-import {
-  FileToProjectMapper,
-  UnownedFileError,
-} from "../nx-resolver/file-mapper";
-import {
-  TestFrameworkName,
-  SmartStartResult,
-  NxProjectInfo,
-} from "../../shared-types";
+import * as path from "node:path";
+import Container, {Service} from "typedi";
+import {NxProjectInfo, SmartStartResult, TestFrameworkName} from "../../shared-types";
+import {TestConfigResolver} from "../config/test-config-resolver";
+import {TsconfigResolver} from "../config/tsconfig-resolver";
+import {FileToProjectMapper, UnownedFileError} from "../nx-resolver/file-mapper";
+import {NxWorkspaceResolver} from "../nx-resolver/workspace-resolver";
 
 // Known executor → framework mappings
 const EXECUTOR_FRAMEWORK_MAP: Record<string, TestFrameworkName> = {
@@ -34,13 +30,7 @@ const FRAMEWORK_CONFIG_PATTERNS: Array<{
 }> = [
   {
     framework: "jest",
-    patterns: [
-      "jest.config.ts",
-      "jest.config.js",
-      "jest.config.mjs",
-      "jest.config.cjs",
-      "jest.config.json",
-    ],
+    patterns: ["jest.config.ts", "jest.config.js", "jest.config.mjs", "jest.config.cjs", "jest.config.json"],
   },
   {
     framework: "vitest",
@@ -63,14 +53,21 @@ const FRAMEWORK_CONFIG_PATTERNS: Array<{
  */
 const TEST_TARGET_NAMES = ["test", "test:unit", "unit-test", "spec"];
 
+@Service()
 export class SmartStartResolver {
   private readonly fileMapper: FileToProjectMapper;
+  private readonly tsconfigResolver: TsconfigResolver;
+  private readonly testConfigResolver: TestConfigResolver;
 
   constructor(
-    private readonly workspaceResolver: NxWorkspaceResolver,
+    private readonly workspaceResolver: NxWorkspaceResolver = Container.get(NxWorkspaceResolver),
     fileMapper?: FileToProjectMapper,
+    tsconfigResolver?: TsconfigResolver,
+    testConfigResolver?: TestConfigResolver,
   ) {
-    this.fileMapper = fileMapper ?? new FileToProjectMapper(workspaceResolver);
+    this.fileMapper = fileMapper ?? Container.get(FileToProjectMapper);
+    this.tsconfigResolver = tsconfigResolver ?? Container.get(TsconfigResolver);
+    this.testConfigResolver = testConfigResolver ?? Container.get(TestConfigResolver);
   }
 
   /**
@@ -85,46 +82,55 @@ export class SmartStartResolver {
    * @param filePath Absolute path to the focused file
    * @param includeDependents Whether to compute dependents (default: true)
    */
-  async resolve(
-    filePath: string,
-    includeDependents = true,
-  ): Promise<SmartStartResult> {
+  async resolve(filePath: string, includeDependents = true): Promise<SmartStartResult> {
     console.log(`[SmartStartResolver] Resolving: ${filePath}`);
+
+    const workspaceRoot = this.workspaceResolver.getWorkspaceRoot();
 
     // Step 1: Map to closest project
     const projects = await this.fileMapper.mapFileToProjects(filePath);
-    console.log(
-      `[SmartStartResolver] Found ${projects.length} project(s) for file`,
-    );
+    console.log(`[SmartStartResolver] Found ${projects.length} project(s) for file`);
 
     if (projects.length === 0) {
       throw new UnownedFileError(filePath);
     }
 
     const project = projects[0]; // closest by depth
-    console.log(
-      `[SmartStartResolver] Selected project: ${project.name} (root: ${project.root})`,
-    );
+    console.log(`[SmartStartResolver] Selected project: ${project.name} (root: ${project.root})`);
 
-    // Step 2: Detect test framework
-    const testFramework = await this.detectFramework(project);
-    console.log(`[SmartStartResolver] Detected framework: ${testFramework}`);
+    // Step 2: Resolve closest tsconfig.json for path alias support
+    const tsconfigInfo = await this.tsconfigResolver.findClosestTsconfig(filePath, workspaceRoot);
+    const tsconfigPath = tsconfigInfo?.tsconfigPath ?? null;
+    const pathAliases = tsconfigInfo?.rawPaths ?? {};
+    console.log(`[SmartStartResolver] tsconfig: ${tsconfigPath || "(none found)"}`);
+    if (Object.keys(pathAliases).length > 0) {
+      console.log(`[SmartStartResolver] Path aliases: ${Object.keys(pathAliases).join(", ")}`);
+    }
 
-    // Step 3: Resolve test target and config path
+    // Step 3: Resolve closest test config — use it to detect framework
+    const testConfigInfo = this.testConfigResolver.findClosestTestConfig(filePath, workspaceRoot);
+
+    // Step 4: Detect test framework (config file → executor → deps → fallback)
+    let testFramework: TestFrameworkName;
+    if (testConfigInfo) {
+      testFramework = testConfigInfo.framework;
+      console.log(`[SmartStartResolver] Framework from config file: ${testFramework} (${testConfigInfo.configPath})`);
+    } else {
+      testFramework = await this.detectFramework(project);
+      console.log(`[SmartStartResolver] Framework from fallback detection: ${testFramework}`);
+    }
+
+    // Step 5: Resolve test target and config path
     const testTarget = this.resolveTestTarget(project);
     console.log(`[SmartStartResolver] Test target: ${testTarget}`);
 
-    const configPath = await this.resolveConfigPath(project, testFramework);
-    console.log(
-      `[SmartStartResolver] Config path: ${configPath || "(none found)"}`,
-    );
+    const configPath = testConfigInfo?.configPath ?? (await this.resolveConfigPath(project, testFramework));
+    console.log(`[SmartStartResolver] Config path: ${configPath || "(none found)"}`);
 
-    // Step 4: Compute transitive dependents
+    // Step 6: Compute transitive dependents
     let dependents: string[] = [];
     if (includeDependents) {
-      dependents = await this.workspaceResolver.getTransitiveDependents(
-        project.name,
-      );
+      dependents = await this.workspaceResolver.getTransitiveDependents(project.name);
       console.log(`[SmartStartResolver] Found ${dependents.length} dependents`);
     }
 
@@ -134,6 +140,8 @@ export class SmartStartResolver {
       testFramework,
       testTarget,
       configPath,
+      tsconfigPath,
+      pathAliases,
       dependents,
     };
   }
@@ -202,22 +210,17 @@ export class SmartStartResolver {
       }
     } catch (e) {
       // Ignore if targets is not iterable
-      console.warn(
-        `[SmartStartResolver] Error iterating targets for project ${project.name}:`,
-        e,
-      );
+      console.warn(`[SmartStartResolver] Error iterating targets for project ${project.name}:`, e);
     }
 
     return null;
   }
 
-  private async detectFromConfigFiles(
-    project: NxProjectInfo,
-  ): Promise<TestFrameworkName | null> {
+  private async detectFromConfigFiles(project: NxProjectInfo): Promise<TestFrameworkName | null> {
     const workspaceRoot = this.workspaceResolver.getWorkspaceRoot();
     const projectRoot = path.resolve(workspaceRoot, project.root);
 
-    for (const { framework, patterns } of FRAMEWORK_CONFIG_PATTERNS) {
+    for (const {framework, patterns} of FRAMEWORK_CONFIG_PATTERNS) {
       for (const pattern of patterns) {
         const configPath = path.join(projectRoot, pattern);
         if (await this.fileExists(configPath)) {
@@ -229,9 +232,7 @@ export class SmartStartResolver {
     return null;
   }
 
-  private async detectFromDependencies(
-    project: NxProjectInfo,
-  ): Promise<TestFrameworkName | null> {
+  private async detectFromDependencies(project: NxProjectInfo): Promise<TestFrameworkName | null> {
     const workspaceRoot = this.workspaceResolver.getWorkspaceRoot();
 
     // Check project-level package.json first, then workspace root
@@ -250,9 +251,7 @@ export class SmartStartResolver {
     return null;
   }
 
-  private async checkPackageJsonForFramework(
-    pkgPath: string,
-  ): Promise<TestFrameworkName | null> {
+  private async checkPackageJsonForFramework(pkgPath: string): Promise<TestFrameworkName | null> {
     try {
       const raw = await fs.promises.readFile(pkgPath, "utf-8");
       const pkg = JSON.parse(raw) as {
@@ -291,10 +290,7 @@ export class SmartStartResolver {
     return "test";
   }
 
-  private async resolveConfigPath(
-    project: NxProjectInfo,
-    framework: TestFrameworkName,
-  ): Promise<string | null> {
+  private async resolveConfigPath(project: NxProjectInfo, framework: TestFrameworkName): Promise<string | null> {
     const workspaceRoot = this.workspaceResolver.getWorkspaceRoot();
     const projectRoot = path.resolve(workspaceRoot, project.root);
 
@@ -315,9 +311,7 @@ export class SmartStartResolver {
     }
 
     // Fall back to scanning for config files
-    const patterns = FRAMEWORK_CONFIG_PATTERNS.find(
-      (p) => p.framework === framework,
-    );
+    const patterns = FRAMEWORK_CONFIG_PATTERNS.find((p) => p.framework === framework);
     if (patterns) {
       for (const pattern of patterns.patterns) {
         const configPath = path.join(projectRoot, pattern);

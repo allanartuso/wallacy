@@ -53,6 +53,8 @@
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vscode-test",
+    "test:integration": "vitest run --config vitest.config.mts",
+    "test:integration:watch": "vitest watch --config vitest.config.mts",
     "install": "npm run compile && npm run vsix && code --install-extension wallacy-0.0.1.vsix"
   },
   "devDependencies": {

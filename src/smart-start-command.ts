@@ -1,19 +1,21 @@
 import * as path from "path";
-import Container, { Service } from "typedi";
-import { FileSystemWatcher } from "vscode";
-import { IPCClient } from "./ipc-client";
-import type { SmartStartResult } from "./shared-types";
-import { SmartStartSession } from "./smart-start-session";
-import { isTestFile } from "./test-utils";
-import { VsCodeService } from "./vs-code.service";
+import Container, {Service} from "typedi";
+import {FileSystemWatcher} from "vscode";
+import {NxWorkspaceResolver} from "./core-engine/nx-resolver/workspace-resolver";
+import {IPCClient} from "./ipc-client";
+import type {SmartStartResult} from "./shared-types";
+import {SmartStartCallbacks, SmartStartExecutor} from "./smart-start-executor";
+import {SmartStartSession} from "./smart-start-session";
+import {isTestFile} from "./test-utils";
+import {VsCodeService} from "./vs-code.service";
 
 @Service()
 export class SmartStartCommand {
   private readonly vsCodeService = Container.get(VsCodeService);
   private readonly iPCClient = Container.get(IPCClient);
+  private readonly session = Container.get(SmartStartSession);
 
   private pendingSmartStartFile: string | null = null;
-  private session: SmartStartSession | null = null;
   private fileWatcher: FileSystemWatcher | null = null;
   private workspaceRoot: string | null = null;
   private disposed = false;
@@ -65,13 +67,9 @@ export class SmartStartCommand {
     }
 
     const filePath = editor.document.uri.fsPath;
-    const workspaceFolder = this.vsCodeService.getWorkspaceFolder(
-      editor.document.uri,
-    );
+    const workspaceFolder = this.vsCodeService.getWorkspaceFolder(editor.document.uri);
 
-    this.vsCodeService.appendLine(
-      "[Extension] Smart Start initiated for: " + editor.document.uri.fsPath,
-    );
+    this.vsCodeService.appendLine("[Extension] Smart Start initiated for: " + editor.document.uri.fsPath);
 
     if (!workspaceFolder) {
       this.vsCodeService.showErrorMessage("File is not part of a workspace");
@@ -81,19 +79,54 @@ export class SmartStartCommand {
     this.workspaceRoot = workspaceFolder.uri.fsPath;
 
     if (!isTestFile(filePath)) {
-      this.vsCodeService.showErrorMessage(
-        `${path.basename(filePath)} is not a test file (.test.ts, .spec.ts, etc)`,
-      );
+      this.vsCodeService.showErrorMessage(`${path.basename(filePath)} is not a test file (.test.ts, .spec.ts, etc)`);
       return;
     }
 
-    if (!this.session) {
-      this.session = new SmartStartSession(this.workspaceRoot);
-    }
+    this.session.setWorkspaceRoot(this.workspaceRoot);
 
-    this.vsCodeService.showInformationMessage(
-      `Smart Start initiated for: ${path.basename(filePath)}`,
-    );
+    // ─── Drive the full resolution → execution pipeline ────
+    this.pendingSmartStartFile = filePath;
+
+    // Configure DI container with the workspace root, then resolve the executor
+    Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(this.workspaceRoot));
+    const executor = Container.get(SmartStartExecutor);
+
+    this.vsCodeService.appendLine(`[Extension] Resolving project and framework for: ${path.basename(filePath)}`);
+
+    const callbacks: SmartStartCallbacks = {
+      onResolved: (result) => {
+        this.handleSmartStartResponse(result);
+      },
+      onTestsDiscovered: (tests) => {
+        this.handleTestDiscovery(tests);
+      },
+      onTestResult: (result) => {
+        this.handleTestResult(result);
+      },
+      onRunComplete: (collected) => {
+        this.handleTestRunComplete(collected);
+      },
+      onError: (error) => {
+        this.handleEngineError({message: error.message});
+      },
+      onLog: (message) => {
+        this.vsCodeService.appendLine(message);
+      },
+    };
+
+    try {
+      const executeResult = await executor.execute(filePath, callbacks);
+
+      this.vsCodeService.appendLine(
+        `[Extension] Smart Start complete — ` +
+          `${executeResult.results.length} result(s) from ${executeResult.resolution.project.name}`,
+      );
+    } catch (error: any) {
+      this.vsCodeService.showErrorMessage(`Smart Start failed: ${error.message}`);
+    } finally {
+      this.pendingSmartStartFile = null;
+    }
   }
 
   /**
@@ -104,25 +137,20 @@ export class SmartStartCommand {
       `[Extension] Smart Start resolved: ${payload.project.name} (${payload.testFramework})`,
     );
 
-    if (!this.pendingSmartStartFile && this.session?.isActive()) {
+    if (!this.pendingSmartStartFile && this.session.isActive()) {
       // Get the file from the current session
       const currentConfig = this.session.getCurrentConfig();
       if (currentConfig.file) {
-        this.session.initializeSession(
-          currentConfig.file.absolutePath,
-          payload,
-        );
+        this.session.initializeSession(currentConfig.file.absolutePath, payload);
       }
     } else if (this.pendingSmartStartFile) {
       // Initialize session with the pending file
-      this.session?.initializeSession(this.pendingSmartStartFile, payload);
+      this.session.initializeSession(this.pendingSmartStartFile, payload);
       this.setupFileWatching();
     }
 
     // Show project and framework info
-    this.vsCodeService.showInformationMessage(
-      `Running tests in ${payload.project.name} (${payload.testFramework})`,
-    );
+    this.vsCodeService.showInformationMessage(`Running tests in ${payload.project.name} (${payload.testFramework})`);
   }
 
   /**
@@ -130,14 +158,10 @@ export class SmartStartCommand {
    */
   private handleTestDiscovery(payload: any) {
     const tests = payload as any[];
-    this.vsCodeService.appendLine(
-      `[Extension] Discovered ${tests.length} test(s)`,
-    );
+    this.vsCodeService.appendLine(`[Extension] Discovered ${tests.length} test(s)`);
 
     if (tests.length > 0) {
-      this.vsCodeService.appendLine(
-        `[Extension] Test files: ${tests.map((t) => path.basename(t.file)).join(", ")}`,
-      );
+      this.vsCodeService.appendLine(`[Extension] Test files: ${tests.map((t) => path.basename(t.file)).join(", ")}`);
     }
   }
 
@@ -146,16 +170,11 @@ export class SmartStartCommand {
    */
   private handleTestResult(payload: any) {
     const result = payload as any;
-    const statusIcon =
-      result.status === "passed" ? "✓" : result.status === "failed" ? "✗" : "○";
-    this.vsCodeService.appendLine(
-      `[Extension] ${statusIcon} ${result.name} (${result.duration}ms)`,
-    );
+    const statusIcon = result.status === "passed" ? "✓" : result.status === "failed" ? "✗" : "○";
+    this.vsCodeService.appendLine(`[Extension] ${statusIcon} ${result.name} (${result.duration}ms)`);
 
     if (result.status === "failed" && result.error) {
-      this.vsCodeService.appendLine(
-        `[Extension] Error: ${result.error.message}`,
-      );
+      this.vsCodeService.appendLine(`[Extension] Error: ${result.error.message}`);
     }
   }
 
@@ -171,12 +190,8 @@ export class SmartStartCommand {
    * Handle engine errors
    */
   private handleEngineError(payload: any) {
-    this.vsCodeService.appendLine(
-      `[Extension] Engine error: ${payload.message}`,
-    );
-    this.vsCodeService.showErrorMessage(
-      `Test Engine error: ${payload.message}`,
-    );
+    this.vsCodeService.appendLine(`[Extension] Engine error: ${payload.message}`);
+    this.vsCodeService.showErrorMessage(`Test Engine error: ${payload.message}`);
   }
 
   /**
@@ -198,15 +213,12 @@ export class SmartStartCommand {
       "**/*.{test,spec}.{ts,js,tsx,jsx,mts,mjs}",
     );
 
-    this.fileWatcher =
-      this.vsCodeService.createFileSystemWatcher(testFilePattern);
+    this.fileWatcher = this.vsCodeService.createFileSystemWatcher(testFilePattern);
 
     // On file change, send file change notification to engine
     this.fileWatcher.onDidChange((uri) => {
       const filePath = uri.fsPath;
-      this.vsCodeService.appendLine(
-        `[Extension] Test file changed: ${path.basename(filePath)}`,
-      );
+      this.vsCodeService.appendLine(`[Extension] Test file changed: ${path.basename(filePath)}`);
 
       // Check if this file is part of the same session
       if (this.session?.shouldRunInSameSession(filePath)) {
@@ -216,9 +228,7 @@ export class SmartStartCommand {
       }
     });
 
-    this.vsCodeService.appendLine(
-      `[Extension] File watcher started for test files`,
-    );
+    this.vsCodeService.appendLine(`[Extension] File watcher started for test files`);
   }
 
   dispose() {
@@ -227,7 +237,7 @@ export class SmartStartCommand {
       this.fileWatcher.dispose();
     }
     this.iPCClient.disconnect();
-    this.session?.clearSession();
+    this.session.clearSession();
 
     this.vsCodeService.appendLine("[Extension] SmartStartCommand disposed");
   }

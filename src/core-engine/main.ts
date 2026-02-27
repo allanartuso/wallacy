@@ -1,20 +1,12 @@
 import * as path from "node:path";
-import {
-  DependencyGraph,
-  GraphDiffEngine,
-  StaticAnalysisSeed,
-} from "./dependency-graph";
-import { IPCServer } from "./ipc/server";
-import { FileToProjectMapper, NxWorkspaceResolver } from "./nx-resolver";
-import { ExecutionQueue, TestExecutor, TestScheduler } from "./scheduler";
-import { SmartStartResolver } from "./smart-start/smart-start-resolver";
-import {
-  BufferSync,
-  FileChangeEvent,
-  FileWatcher,
-  VirtualFileSystem,
-} from "./vfs";
-import { JasmineAdapter, JestAdapter, VitestAdapter } from "../test-adapters";
+import Container from "typedi";
+import {JasmineAdapter, JestAdapter, VitestAdapter} from "../test-adapters";
+import {DependencyGraph, GraphDiffEngine, StaticAnalysisSeed} from "./dependency-graph";
+import {IPCServer} from "./ipc/server";
+import {FileToProjectMapper, NxWorkspaceResolver} from "./nx-resolver";
+import {ExecutionQueue, TestExecutor, TestScheduler} from "./scheduler";
+import {SmartStartResolver} from "./smart-start/smart-start-resolver";
+import {BufferSync, FileChangeEvent, FileWatcher, VirtualFileSystem} from "./vfs";
 
 /**
  * Exported function to initialize and start the core engine.
@@ -22,11 +14,15 @@ import { JasmineAdapter, JestAdapter, VitestAdapter } from "../test-adapters";
  */
 export async function startCoreEngine(
   workspaceRoot: string,
-): Promise<{ port: number; server: IPCServer; cleanup: () => Promise<void> }> {
+): Promise<{port: number; server: IPCServer; cleanup: () => Promise<void>}> {
   // 1. Core Engine Subsystems
   const vfs = new VirtualFileSystem();
-  const workspaceResolver = new NxWorkspaceResolver(workspaceRoot);
-  const projectMapper = new FileToProjectMapper(workspaceResolver);
+
+  // Configure DI container with workspace root
+  Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(workspaceRoot));
+  const workspaceResolver = Container.get(NxWorkspaceResolver);
+  const projectMapper = Container.get(FileToProjectMapper);
+
   const depGraph = new DependencyGraph();
   const staticAnalysis = new StaticAnalysisSeed(depGraph);
   const diffEngine = new GraphDiffEngine(depGraph, staticAnalysis, vfs);
@@ -34,17 +30,9 @@ export async function startCoreEngine(
   const server = new IPCServer();
   const executor = new TestExecutor(server, projectMapper, workspaceRoot);
   const executionQueue = new ExecutionQueue(executor);
-  const scheduler = new TestScheduler(
-    vfs,
-    depGraph,
-    projectMapper,
-    executionQueue,
-  );
+  const scheduler = new TestScheduler(vfs, depGraph, projectMapper, executionQueue);
 
-  const smartResolver = new SmartStartResolver(
-    workspaceResolver,
-    projectMapper,
-  );
+  const smartResolver = Container.get(SmartStartResolver);
   const watcher = new FileWatcher(workspaceRoot, vfs);
   const bufferSync = new BufferSync(vfs);
 
@@ -83,7 +71,7 @@ export async function startCoreEngine(
 
   // 4. Protocol Handlers
   server.onMessage("smart-start-request", async (payload: any) => {
-    const { file } = payload;
+    const {file} = payload;
     console.log(`[Core Engine] Handling smart-start-request for: ${file}`);
 
     try {
@@ -111,20 +99,13 @@ export async function startCoreEngine(
             : new JasmineAdapter();
 
       console.log(`[Core Engine] Discovering tests in: ${absoluteProjectRoot}`);
-      const tests = await discoveryAdapter.discoverTests(
-        absoluteProjectRoot,
-        result.configPath,
-      );
+      const tests = await discoveryAdapter.discoverTests(absoluteProjectRoot, result.configPath);
       console.log(`[Core Engine] Discovered ${tests.length} test file(s)`);
       server.broadcast("test-discovery", tests);
 
       // Start file watcher in background (don't block test execution)
       if (!watcher.isWatching()) {
-        watcher
-          .start()
-          .catch((e: Error) =>
-            console.error("[Core Engine] Watcher error:", e.message),
-          );
+        watcher.start().catch((e: Error) => console.error("[Core Engine] Watcher error:", e.message));
       }
 
       // Only directly enqueue if it looks like a test file.
@@ -132,9 +113,7 @@ export async function startCoreEngine(
       // and dependency graph have processed it.
       const isTestFile = /\.(test|spec)\.(ts|js|tsx|jsx|mts|mjs)$/.test(file);
       if (isTestFile) {
-        console.log(
-          `[Core Engine] Enqueueing run for test file: ${path.basename(file)}`,
-        );
+        console.log(`[Core Engine] Enqueueing run for test file: ${path.basename(file)}`);
         executionQueue.enqueue({
           testFiles: new Set([file]),
           projectNames: new Set([result.project.name]),
@@ -142,16 +121,12 @@ export async function startCoreEngine(
           timestamp: Date.now(),
         });
       } else {
-        console.log(
-          `[Core Engine] Focused file is not a test file. Waiting for dependency analysis...`,
-        );
+        console.log(`[Core Engine] Focused file is not a test file. Waiting for dependency analysis...`);
         // We can still trigger a manual check for this file in the scheduler
         // once we're sure the VFS has it.
         // TODO: readFile doesn't exist
         (vfs as any).readFile(file).then(() => {
-          console.log(
-            `[Core Engine] Triggering scheduler for file: ${path.basename(file)}`,
-          );
+          console.log(`[Core Engine] Triggering scheduler for file: ${path.basename(file)}`);
           scheduler.onFilesChanged([file]);
         });
       }
@@ -168,12 +143,12 @@ export async function startCoreEngine(
   });
 
   server.onMessage("buffer-update", (payload: any) => {
-    const { filePath, content } = payload;
+    const {filePath, content} = payload;
     bufferSync.applyBufferUpdate(filePath, content);
   });
 
   server.onMessage("file-changed", async (payload: any) => {
-    const { filePath } = payload;
+    const {filePath} = payload;
     console.log(`[Core Engine] File changed notification: ${filePath}`);
 
     // Trigger scheduler to rerun tests for this file
@@ -193,10 +168,8 @@ export async function startCoreEngine(
   });
 
   server.onMessage("test-run-request", async (payload: any) => {
-    const { testIds } = payload;
-    console.log(
-      `[Core Engine] Manual test run requested for ${testIds.length} tests`,
-    );
+    const {testIds} = payload;
+    console.log(`[Core Engine] Manual test run requested for ${testIds.length} tests`);
 
     executionQueue.enqueue({
       testFiles: new Set(testIds),
@@ -221,7 +194,7 @@ export async function startCoreEngine(
 if (require.main === module) {
   const workspaceRoot = process.cwd();
   startCoreEngine(workspaceRoot)
-    .then(({ port }) => {
+    .then(({port}) => {
       console.log(`[Core Engine] Engine started on port ${port}`);
     })
     .catch((err) => {

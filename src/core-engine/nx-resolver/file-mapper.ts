@@ -4,22 +4,22 @@
 // Falls back to file-system discovery for non-Nx projects.
 // ============================================================
 
-import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import type { NxWorkspaceResolver } from "./workspace-resolver";
-import { NxProjectInfo } from "../../shared-types";
+import * as path from "node:path";
+import Container, {Service} from "typedi";
+import {NxProjectInfo} from "../../shared-types";
+import {NxWorkspaceResolver} from "./workspace-resolver";
 
 export class UnownedFileError extends Error {
   constructor(public readonly filePath: string) {
-    super(
-      `File "${filePath}" does not belong to any Nx project in the workspace.`,
-    );
+    super(`File "${filePath}" does not belong to any Nx project in the workspace.`);
     this.name = "UnownedFileError";
   }
 }
 
+@Service()
 export class FileToProjectMapper {
-  constructor(public readonly workspaceResolver: NxWorkspaceResolver) {}
+  constructor(private readonly workspaceResolver: NxWorkspaceResolver = Container.get(NxWorkspaceResolver)) {}
 
   /**
    * Map a file path to its owning Nx project(s).
@@ -36,32 +36,27 @@ export class FileToProjectMapper {
 
     // Try Nx first - check if workspace.json or nx.json exists
     const isNxWorkspace = await this.isNxWorkspace(workspaceRoot);
-    console.log(
-      `[FileToProjectMapper] Checking if Nx workspace: ${isNxWorkspace}`,
-    );
+    console.log(`[FileToProjectMapper] Checking if Nx workspace: ${isNxWorkspace}`);
 
     if (isNxWorkspace) {
-      return this.mapFileToProjectsNx(absoluteFilePath, workspaceRoot);
-    } else {
-      // Non-Nx workspace: discover project from file system
-      return this.discoverProjectFromFileSystem(
-        absoluteFilePath,
-        workspaceRoot,
-      );
+      const nxProjects = await this.mapFileToProjectsNx(absoluteFilePath, workspaceRoot);
+      // If Nx graph found projects, use them
+      if (nxProjects.length > 0) {
+        return nxProjects;
+      }
+      // If Nx graph is empty (e.g. @nx/devkit not available), fall back to file-system discovery
+      console.log(`[FileToProjectMapper] Nx graph returned no projects, falling back to file-system discovery`);
     }
+
+    // Non-Nx workspace or empty Nx graph: discover project from file system
+    return this.discoverProjectFromFileSystem(absoluteFilePath, workspaceRoot);
   }
 
   /**
    * Use Nx project graph to map file to projects
    */
-  private async mapFileToProjectsNx(
-    absoluteFilePath: string,
-    workspaceRoot: string,
-  ): Promise<NxProjectInfo[]> {
-    const relativePath = this.normalizeToRelative(
-      absoluteFilePath,
-      workspaceRoot,
-    );
+  private async mapFileToProjectsNx(absoluteFilePath: string, workspaceRoot: string): Promise<NxProjectInfo[]> {
+    const relativePath = this.normalizeToRelative(absoluteFilePath, workspaceRoot);
 
     const allProjects = await this.workspaceResolver.getAllProjects();
     const matchingProjects: NxProjectInfo[] = [];
@@ -91,15 +86,10 @@ export class FileToProjectMapper {
     absoluteFilePath: string,
     workspaceRoot: string,
   ): Promise<NxProjectInfo[]> {
-    console.log(
-      `[FileToProjectMapper] Discovering project from file system for: ${path.basename(absoluteFilePath)}`,
-    );
+    console.log(`[FileToProjectMapper] Discovering project from file system for: ${path.basename(absoluteFilePath)}`);
 
     // Walk up from file location to find project root (where package.json is)
-    const projectRoot = await this.findProjectRoot(
-      absoluteFilePath,
-      workspaceRoot,
-    );
+    const projectRoot = await this.findProjectRoot(absoluteFilePath, workspaceRoot);
 
     if (!projectRoot) {
       console.log(`[FileToProjectMapper] Could not find project root`);
@@ -113,9 +103,7 @@ export class FileToProjectMapper {
       name: path.basename(projectRoot) || "workspace-root",
       root: projectRoot,
       sourceRoot: projectRoot,
-      targets: {
-        test: { executor: "vitest:test" }, // placeholder, will detect real framework
-      },
+      targets: {},
       tags: [],
       implicitDependencies: [],
       projectType: "application",
@@ -128,10 +116,7 @@ export class FileToProjectMapper {
    * Walk up directory tree to find project root
    * Look for: package.json, vitest.config.*, jest.config.*, tsconfig.json
    */
-  private async findProjectRoot(
-    filePath: string,
-    workspaceRoot: string,
-  ): Promise<string | null> {
+  private async findProjectRoot(filePath: string, workspaceRoot: string): Promise<string | null> {
     let currentDir = path.dirname(filePath);
     const maxIterations = 20; // Avoid infinite loops
     let iterations = 0;
@@ -141,9 +126,7 @@ export class FileToProjectMapper {
 
       // Check for package.json (strong indicator of project root)
       if (await this.fileExists(path.join(currentDir, "package.json"))) {
-        console.log(
-          `[FileToProjectMapper] Found package.json at: ${currentDir}`,
-        );
+        console.log(`[FileToProjectMapper] Found package.json at: ${currentDir}`);
         return currentDir;
       }
 
@@ -161,9 +144,7 @@ export class FileToProjectMapper {
 
       for (const configFile of configFiles) {
         if (await this.fileExists(path.join(currentDir, configFile))) {
-          console.log(
-            `[FileToProjectMapper] Found ${configFile} at: ${currentDir}`,
-          );
+          console.log(`[FileToProjectMapper] Found ${configFile} at: ${currentDir}`);
           return currentDir;
         }
       }
@@ -178,9 +159,7 @@ export class FileToProjectMapper {
     }
 
     // Fallback: return workspace root as project root
-    console.log(
-      `[FileToProjectMapper] Falling back to workspace root: ${workspaceRoot}`,
-    );
+    console.log(`[FileToProjectMapper] Falling back to workspace root: ${workspaceRoot}`);
     return workspaceRoot;
   }
 
@@ -216,9 +195,7 @@ export class FileToProjectMapper {
   /**
    * Convenience: maps a file and throws if unowned.
    */
-  async mapFileToProjectOrThrow(
-    absoluteFilePath: string,
-  ): Promise<NxProjectInfo> {
+  async mapFileToProjectOrThrow(absoluteFilePath: string): Promise<NxProjectInfo> {
     const projects = await this.mapFileToProjects(absoluteFilePath);
     if (projects.length === 0) {
       throw new UnownedFileError(absoluteFilePath);
@@ -230,9 +207,7 @@ export class FileToProjectMapper {
    * Get all projects affected by changes to a set of files.
    * Returns unique projects.
    */
-  async getAffectedProjects(
-    absoluteFilePaths: string[],
-  ): Promise<NxProjectInfo[]> {
+  async getAffectedProjects(absoluteFilePaths: string[]): Promise<NxProjectInfo[]> {
     const projectMap = new Map<string, NxProjectInfo>();
     for (const filePath of absoluteFilePaths) {
       const projects = await this.mapFileToProjects(filePath);
@@ -247,10 +222,7 @@ export class FileToProjectMapper {
 
   // ─── Private helpers ──────────────────────────────────────
 
-  private normalizeToRelative(
-    absolutePath: string,
-    workspaceRoot: string,
-  ): string {
+  private normalizeToRelative(absolutePath: string, workspaceRoot: string): string {
     const normalized = this.normalizePath(absolutePath);
     const normalizedRoot = this.normalizePath(workspaceRoot);
 
