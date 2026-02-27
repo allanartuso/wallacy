@@ -244,11 +244,7 @@ export class SmartStartCommand {
       this.vsCodeService.appendLine(`[Extension] Test file changed: ${path.basename(filePath)}`);
 
       // Check if this file is part of the same session
-      if (this.smartStartSession?.shouldRunInSameSession(filePath)) {
-        this.iPCClient.send("file-changed", {
-          filePath: filePath,
-        });
-      }
+      this.executeForFile(filePath);
     });
 
     this.vsCodeService.appendLine(`[Extension] File watcher started for test files`);
@@ -265,5 +261,13 @@ export class SmartStartCommand {
     this.testResultsPanel.dispose();
 
     this.vsCodeService.appendLine("[Extension] SmartStartCommand disposed");
+  }
+
+  /**
+   * Reset the disposed state so the command can be reused after a stop/restart cycle.
+   * Called by the extension host when re-activating Smart Start.
+   */
+  resetDisposed() {
+    this.disposed = false;
   }
 }

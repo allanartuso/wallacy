@@ -123,7 +123,46 @@ export class VitestAdapter implements TestFrameworkAdapter {
         this.vsCodeService.appendLine(
           `[VitestAdapter] Rerunning files on cached instance: ${JSON.stringify(rerunPaths)}`,
         );
-        await vitest.rerunFiles(rerunPaths);
+
+        // Invalidate the file in Vite's module cache so changes are picked up
+        for (const filePath of rerunPaths) {
+          vitest.invalidateFile(filePath);
+        }
+
+        // Build test specifications for the files we want to rerun
+        const specs = rerunPaths.flatMap((f: string) => vitest.getModuleSpecifications(f));
+        if (specs.length === 0) {
+          // If no cached specs, re-glob to pick up specifications
+          this.vsCodeService.appendLine("[VitestAdapter] No cached specs — re-globbing...");
+          await vitest.globTestSpecifications(rerunPaths);
+          const retrySpecs = rerunPaths.flatMap((f: string) => vitest.getModuleSpecifications(f));
+          if (retrySpecs.length > 0) {
+            this.vsCodeService.appendLine(`[VitestAdapter] Re-globbed ${retrySpecs.length} spec(s)`);
+            await vitest.runTestSpecifications(retrySpecs);
+          } else {
+            this.vsCodeService.appendLine("[VitestAdapter] Still no specs — falling back to fresh instance");
+            await this.closeCachedInstance();
+            vitest = await this.createVitestInstance(
+              options,
+              normalizedRoot,
+              normalizedWorkspaceRoot,
+              normalizedConfig,
+              relFiles,
+              absFiles,
+            );
+            if (!vitest) {
+              this.vsCodeService.appendLine(
+                "[VitestAdapter] startVitest returned null — tests may have failed to start",
+              );
+              return results;
+            }
+            this.cachedVitest = vitest;
+            this.cachedFingerprint = fingerprint;
+          }
+        } else {
+          this.vsCodeService.appendLine(`[VitestAdapter] Rerunning ${specs.length} spec(s) via runTestSpecifications`);
+          await vitest.runTestSpecifications(specs);
+        }
       } else {
         // ─── Create fresh instance ────────────────────────────
         // Close any stale cached instance first
