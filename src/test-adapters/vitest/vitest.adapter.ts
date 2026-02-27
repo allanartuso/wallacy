@@ -24,6 +24,15 @@ export class VitestAdapter implements TestFrameworkAdapter {
   private lastDuration = 0;
 
   /**
+   * Cached Vitest instance for session reuse.
+   * Kept alive between runs so we skip re-initialization
+   * (module graph, worker pool, Vite dev server, etc.).
+   */
+  private cachedVitest: any = null;
+  /** The options fingerprint for the cached instance — invalidated on change. */
+  private cachedFingerprint: string | null = null;
+
+  /**
    * Discover tests in a project using fast glob — NO Vitest instance created here.
    * This avoids occupying worker resources for a lightweight file scan.
    */
@@ -44,7 +53,16 @@ export class VitestAdapter implements TestFrameworkAdapter {
 
   /**
    * Run the specified test files using Vitest's Node API.
-   * Creates a fresh Vitest instance for each run, closes it when done.
+   *
+   * Session Reuse: When running against the same project/config as the previous
+   * run, the cached Vitest instance is reused and `rerunFiles()` is called.
+   * This avoids re-creating the Vite dev server, module graph, and worker pool
+   * — typically saving 2-5 seconds per run (similar to Wallaby's approach).
+   *
+   * A fresh instance is created when:
+   *  - This is the first run
+   *  - The project/config fingerprint changed (different project, config, or aliases)
+   *  - The previous instance errored out
    */
   async executeTests(testFiles: string[], options: ExecutionOptions): Promise<TestResult[]> {
     const results: TestResult[] = [];
@@ -77,111 +95,57 @@ export class VitestAdapter implements TestFrameworkAdapter {
       this.vsCodeService.appendLine(`[VitestAdapter] Failed to chdir to ${targetCwd}: ` + err);
     }
 
-    let vitest: any = null;
+    // Compute a fingerprint to decide whether we can reuse the cached instance
+    const fingerprint = this.computeFingerprint(
+      normalizedRoot,
+      normalizedWorkspaceRoot,
+      normalizedConfig,
+      options.pathAliases,
+    );
+    const canReuse = this.cachedVitest && this.cachedFingerprint === fingerprint;
 
     this.vsCodeService.appendLine("[VitestAdapter] Starting test run for files: " + relFiles.join(", "));
     this.vsCodeService.appendLine(`[VitestAdapter] projectRoot: ${normalizedRoot}`);
     this.vsCodeService.appendLine(`[VitestAdapter] workspaceRoot: ${normalizedWorkspaceRoot}`);
     this.vsCodeService.appendLine(`[VitestAdapter] cwd: ${targetCwd}`);
     this.vsCodeService.appendLine(`[VitestAdapter] config: ${normalizedConfig ?? "none"}`);
+    this.vsCodeService.appendLine(
+      `[VitestAdapter] session reuse: ${canReuse ? "YES (rerunFiles)" : "NO (fresh instance)"}`,
+    );
+
     try {
-      // Resolve vitest/node from the USER'S workspace, not from the extension bundle.
-      // `import("vitest/node")` would resolve relative to the extension install dir
-      // where vitest is not installed. createRequire anchors resolution to the
-      // workspace root (monorepo root) where node_modules/vitest is installed.
-      // Fallback: if the workspace root doesn't have vitest (e.g. in test context),
-      // use a direct dynamic import which resolves from the current process's node_modules.
-      let vitestNode: any;
-      try {
-        // Use the native OS path (not forward-slash normalized) so createRequire
-        // can walk node_modules correctly on Windows.
-        const nativeWorkspaceRoot = path.resolve(options.workspaceRoot);
-        const anchorUrl = pathToFileURL(path.join(nativeWorkspaceRoot, "__placeholder__.js")).href;
-        this.vsCodeService.appendLine(`[VitestAdapter] Resolving vitest/node from: ${anchorUrl}`);
-        const projectRequire = createRequire(anchorUrl);
-        const vitestNodePath = projectRequire.resolve("vitest/node");
-        this.vsCodeService.appendLine(`[VitestAdapter] Resolved vitest/node at: ${vitestNodePath}`);
-        vitestNode = await import(pathToFileURL(vitestNodePath).href);
-      } catch (resolveErr: any) {
+      let vitest: any;
+
+      if (canReuse) {
+        // ─── Reuse existing session ───────────────────────────
+        vitest = this.cachedVitest;
+        const rerunPaths = absFiles;
         this.vsCodeService.appendLine(
-          `[VitestAdapter] Failed to resolve vitest from workspace root: ${resolveErr.message}`,
+          `[VitestAdapter] Rerunning files on cached instance: ${JSON.stringify(rerunPaths)}`,
         );
-        vitestNode = await import("vitest/node");
-      }
-      const startVitest: typeof vitestNode.startVitest = vitestNode.startVitest;
-
-      // Build Vitest CLI options
-      const cliOptions: Record<string, any> = {
-        watch: false,
-        reporters: ["default"],
-        passWithNoTests: true,
-        // Capture console logs via Vitest's onConsoleLog hook.
-        // Signature: (log, type, taskId?) => boolean | void
-        // Returning false suppresses vitest's own printing.
-        onConsoleLog: (log: string, type: "stdout" | "stderr", taskId?: string) => {
-          const entry = this.parseConsoleLog(log, type, taskId);
-          this.hooks?.onConsoleLog?.(entry);
-          // Return false to prevent vitest from also printing to stdout
-          return false;
-        },
-      };
-
-      // Only override the `include` glob when there's NO config file.
-      // When a config is present, its own `include` patterns handle test
-      // file discovery.  Overriding it with specific file paths breaks
-      // vitest's glob-based discovery.  The 2nd argument to startVitest
-      // (cliFilters / relFiles) already filters to the desired files.
-      if (!normalizedConfig) {
-        cliOptions.include = relFiles;
-      }
-
-      if (normalizedConfig) {
-        cliOptions.config = normalizedConfig;
+        await vitest.rerunFiles(rerunPaths);
       } else {
-        // No config file — tell vitest not to look for one
-        cliOptions.config = false;
-      }
+        // ─── Create fresh instance ────────────────────────────
+        // Close any stale cached instance first
+        await this.closeCachedInstance();
 
-      // Build Vite overrides — only set root when there's no config file.
-      // When a config is provided, it already defines its own root and may
-      // rely on plugins (e.g. vite-tsconfig-paths) that resolve paths
-      // relative to that root. Overriding root here would break those.
-      const viteOverrides: Record<string, any> = {};
-      if (!normalizedConfig) {
-        viteOverrides.root = normalizedRoot;
-      }
-
-      // Inject tsconfig path aliases as Vite resolve.alias entries.
-      // This ensures that imports like `@shared/utils` resolve correctly
-      // even if the project's vitest config doesn't include vite-tsconfig-paths.
-      const resolvedAliases = this.buildViteAliases(options.pathAliases);
-      if (Object.keys(resolvedAliases).length > 0) {
-        viteOverrides.resolve = {
-          ...viteOverrides.resolve,
-          alias: resolvedAliases,
-        };
-        this.vsCodeService.appendLine(
-          `[VitestAdapter] Injected ${Object.keys(resolvedAliases).length} path alias(es)}`,
+        vitest = await this.createVitestInstance(
+          options,
+          normalizedRoot,
+          normalizedWorkspaceRoot,
+          normalizedConfig,
+          relFiles,
+          absFiles,
         );
-      }
 
-      // Choose the file list for startVitest's 2nd argument (cliFilters).
-      // With a config: use absolute paths so vitest matches files unambiguously
-      //   regardless of its resolved root.
-      // Without a config: use relative paths (which are also the include glob).
-      const filterFiles = normalizedConfig ? absFiles : relFiles;
+        if (!vitest) {
+          this.vsCodeService.appendLine("[VitestAdapter] startVitest returned null — tests may have failed to start");
+          return results;
+        }
 
-      this.vsCodeService.appendLine(
-        `[VitestAdapter] Vitest CLI options: ${JSON.stringify(cliOptions)}, Vite overrides keys: ${JSON.stringify(Object.keys(viteOverrides))}`,
-      );
-      this.vsCodeService.appendLine(`[VitestAdapter] CLI filters (2nd arg): ${JSON.stringify(filterFiles)}`);
-
-      // Start Vitest — it runs tests and returns the instance
-      vitest = await startVitest("test", filterFiles, cliOptions, viteOverrides);
-
-      if (!vitest) {
-        this.vsCodeService.appendLine("[VitestAdapter] startVitest returned null — tests may have failed to start");
-        return results;
+        // Cache the instance for future reuse
+        this.cachedVitest = vitest;
+        this.cachedFingerprint = fingerprint;
       }
 
       // Extract results from TestModules using Vitest's state API
@@ -209,6 +173,10 @@ export class VitestAdapter implements TestFrameworkAdapter {
       }
     } catch (err: any) {
       this.vsCodeService.appendLine("[VitestAdapter] Error running vitest: " + err);
+
+      // Invalidate cached instance on error — it may be in a broken state
+      await this.closeCachedInstance();
+
       // If vitest failed entirely, return a synthetic error result per file
       for (const file of testFiles) {
         const errorResult: TestResult = {
@@ -227,14 +195,7 @@ export class VitestAdapter implements TestFrameworkAdapter {
         this.hooks?.onTestEnd?.(errorResult);
       }
     } finally {
-      // Always close vitest and restore cwd
-      if (vitest) {
-        try {
-          await vitest.close();
-        } catch {
-          // Ignore close errors
-        }
-      }
+      // Restore cwd — but do NOT close vitest (kept alive for session reuse)
       try {
         process.chdir(originalCwd);
       } catch {
@@ -256,6 +217,7 @@ export class VitestAdapter implements TestFrameworkAdapter {
   }
 
   async dispose(): Promise<void> {
+    await this.closeCachedInstance();
     this.lastResults = [];
     this.lastDuration = 0;
     this.hooks = null;
@@ -331,6 +293,113 @@ export class VitestAdapter implements TestFrameworkAdapter {
       default:
         return "skipped";
     }
+  }
+
+  // ─── Session Management ───────────────────────────────────
+
+  /**
+   * Create a fresh Vitest instance via startVitest().
+   */
+  private async createVitestInstance(
+    options: ExecutionOptions,
+    normalizedRoot: string,
+    normalizedWorkspaceRoot: string,
+    normalizedConfig: string | undefined,
+    relFiles: string[],
+    absFiles: string[],
+  ): Promise<any> {
+    // Resolve vitest/node from the USER'S workspace, not from the extension bundle.
+    let vitestNode: any;
+    try {
+      const nativeWorkspaceRoot = path.resolve(options.workspaceRoot);
+      const anchorUrl = pathToFileURL(path.join(nativeWorkspaceRoot, "__placeholder__.js")).href;
+      this.vsCodeService.appendLine(`[VitestAdapter] Resolving vitest/node from: ${anchorUrl}`);
+      const projectRequire = createRequire(anchorUrl);
+      const vitestNodePath = projectRequire.resolve("vitest/node");
+      this.vsCodeService.appendLine(`[VitestAdapter] Resolved vitest/node at: ${vitestNodePath}`);
+      vitestNode = await import(pathToFileURL(vitestNodePath).href);
+    } catch (resolveErr: any) {
+      this.vsCodeService.appendLine(
+        `[VitestAdapter] Failed to resolve vitest from workspace root: ${resolveErr.message}`,
+      );
+      vitestNode = await import("vitest/node");
+    }
+    const startVitest: typeof vitestNode.startVitest = vitestNode.startVitest;
+
+    // Build Vitest CLI options
+    const cliOptions: Record<string, any> = {
+      // Use watch mode so the instance stays alive for rerunFiles()
+      watch: true,
+      reporters: ["default"],
+      passWithNoTests: true,
+      onConsoleLog: (log: string, type: "stdout" | "stderr", taskId?: string) => {
+        const entry = this.parseConsoleLog(log, type, taskId);
+        this.hooks?.onConsoleLog?.(entry);
+        return false;
+      },
+    };
+
+    if (!normalizedConfig) {
+      cliOptions.include = relFiles;
+    }
+
+    if (normalizedConfig) {
+      cliOptions.config = normalizedConfig;
+    } else {
+      cliOptions.config = false;
+    }
+
+    const viteOverrides: Record<string, any> = {};
+    if (!normalizedConfig) {
+      viteOverrides.root = normalizedRoot;
+    }
+
+    const resolvedAliases = this.buildViteAliases(options.pathAliases);
+    if (Object.keys(resolvedAliases).length > 0) {
+      viteOverrides.resolve = {
+        ...viteOverrides.resolve,
+        alias: resolvedAliases,
+      };
+      this.vsCodeService.appendLine(`[VitestAdapter] Injected ${Object.keys(resolvedAliases).length} path alias(es)}`);
+    }
+
+    const filterFiles = normalizedConfig ? absFiles : relFiles;
+
+    this.vsCodeService.appendLine(
+      `[VitestAdapter] Vitest CLI options: ${JSON.stringify(cliOptions)}, Vite overrides keys: ${JSON.stringify(Object.keys(viteOverrides))}`,
+    );
+    this.vsCodeService.appendLine(`[VitestAdapter] CLI filters (2nd arg): ${JSON.stringify(filterFiles)}`);
+
+    const vitest = await startVitest("test", filterFiles, cliOptions, viteOverrides);
+    return vitest;
+  }
+
+  /**
+   * Close the cached Vitest instance if one exists.
+   */
+  private async closeCachedInstance(): Promise<void> {
+    if (this.cachedVitest) {
+      try {
+        await this.cachedVitest.close();
+      } catch {
+        // Ignore close errors
+      }
+      this.cachedVitest = null;
+      this.cachedFingerprint = null;
+    }
+  }
+
+  /**
+   * Compute a fingerprint for session reuse decisions.
+   * Two runs with the same fingerprint can share the same Vitest instance.
+   */
+  private computeFingerprint(
+    projectRoot: string,
+    workspaceRoot: string,
+    configPath: string | undefined,
+    pathAliases: Record<string, string[]>,
+  ): string {
+    return JSON.stringify({projectRoot, workspaceRoot, configPath, pathAliases});
   }
 
   // ─── Helpers ──────────────────────────────────────────────

@@ -29,13 +29,18 @@
         "command": "wallacy.smartStart",
         "title": "Wallacy: Smart Start",
         "icon": "$(play)"
+      },
+      {
+        "command": "wallacy.stopEngine",
+        "title": "Wallacy: Stop Engine",
+        "icon": "$(debug-stop)"
       }
     ],
     "keybindings": [
       {
         "command": "wallacy.smartStart",
-        "key": "ctrl+shift+t",
-        "mac": "cmd+shift+t",
+        "key": "ctrl+shift+q",
+        "mac": "cmd+shift+q",
         "when": "editorFocus && resourceLangId =~ /^(typescript|javascript|typescriptreact|javascriptreact)$/"
       }
     ]

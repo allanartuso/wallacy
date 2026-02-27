@@ -261,6 +261,7 @@ export class SmartStartCommand {
     }
     this.iPCClient.disconnect();
     this.smartStartSession.clearSession();
+    this.smartStartExecutor.dispose();
     this.testResultsPanel.dispose();
 
     this.vsCodeService.appendLine("[Extension] SmartStartCommand disposed");

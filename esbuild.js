@@ -33,7 +33,17 @@ async function main() {
     sourcesContent: false,
     platform: "node",
     outfile: "dist/extension.js",
-    external: ["vscode", "vitest", "vitest/node", "vite", "lightningcss", "@vitest/ui"],
+    external: [
+      "vscode",
+      "vitest",
+      "vitest/node",
+      "vite",
+      "lightningcss",
+      "@vitest/ui",
+      "jest",
+      "@jest/core",
+      "jest-config",
+    ],
     logLevel: "silent",
     plugins: [
       /* add to the end of plugins array */

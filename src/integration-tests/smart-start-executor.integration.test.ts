@@ -171,9 +171,10 @@ describe("Calculator", () => {
       expect(result.resolution.testFramework).toBe("jest");
       expect(result.resolution.configPath).toBe(path.join(tmpDir, "apps", "api", "jest.config.ts"));
 
-      // Jest adapter returns empty arrays (skeleton) — that's expected
-      expect(result.tests).toEqual([]);
-      expect(result.results).toEqual([]);
+      // Jest adapter now discovers test files via filesystem scan
+      expect(result.tests.length).toBeGreaterThanOrEqual(1);
+      // executeTests will fail (no actual jest installed in temp) — results may be error entries
+      expect(result.results).toBeDefined();
     });
 
     it("should resolve a jasmine project and go through the execute pipeline", async () => {
@@ -461,9 +462,10 @@ describe("Calculator", () => {
       const result = await executor.execute(testFile);
       expect(result.resolution.testFramework).toBe("jest");
       expect(result.resolution.configPath).toBeNull();
-      // Jest adapter (skeleton) returns empty arrays
-      expect(result.tests).toEqual([]);
-      expect(result.results).toEqual([]);
+      // Jest adapter now discovers test files via filesystem scan
+      expect(result.tests.length).toBeGreaterThanOrEqual(1);
+      // executeTests will produce error entries (no jest installed in temp dir)
+      expect(result.results).toBeDefined();
     });
 
     it("should handle multiple test files in the project", async () => {

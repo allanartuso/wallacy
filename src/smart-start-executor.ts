@@ -56,6 +56,14 @@ export class SmartStartExecutor {
   private readonly vsCodeService = Container.get(VsCodeService);
 
   /**
+   * Cached adapter — kept alive between runs for session reuse.
+   * The adapter itself (e.g. VitestAdapter) holds a cached framework instance
+   * so subsequent runs in the same project skip re-initialization.
+   */
+  private cachedAdapter: TestFrameworkAdapter | null = null;
+  private cachedFramework: string | null = null;
+
+  /**
    * Full Smart Start pipeline for a given test file.
    *
    * @param filePath Absolute path to the focused test file
@@ -83,8 +91,8 @@ export class SmartStartExecutor {
     );
     callbacks?.onResolved?.(resolution);
 
-    // Step 2: Create the adapter
-    const adapter = this.createAdapter(resolution.testFramework);
+    // Step 2: Get or create the adapter (reused across runs for session reuse)
+    const adapter = this.getOrCreateAdapter(resolution.testFramework);
 
     // Step 3: Resolve the absolute project root
     const absoluteProjectRoot = path.isAbsolute(resolution.project.root)
@@ -143,8 +151,10 @@ export class SmartStartExecutor {
     this.vsCodeService.appendLine(`[SmartStartExecutor] Run complete — ${allResults.length} result(s)`);
     callbacks?.onRunComplete?.(collected);
 
-    // Cleanup
-    await adapter.dispose();
+    // NOTE: We do NOT dispose the adapter here — it's kept alive for session reuse.
+    // The adapter's internal session (e.g. Vitest instance) will be reused
+    // for subsequent runs against the same project, saving 2-5 seconds.
+    // Disposal happens when the SmartStartCommand/extension is disposed.
 
     return {
       resolution,
@@ -162,7 +172,47 @@ export class SmartStartExecutor {
     return this.smartStartResolver.resolve(filePath);
   }
 
+  /**
+   * Dispose the cached adapter and release resources.
+   * Called when the extension is deactivated.
+   */
+  async dispose(): Promise<void> {
+    if (this.cachedAdapter) {
+      await this.cachedAdapter.dispose();
+      this.cachedAdapter = null;
+      this.cachedFramework = null;
+    }
+  }
+
   // ─── Private ──────────────────────────────────────────────
+
+  /**
+   * Get or create an adapter for the given framework.
+   * If the framework changed, dispose the old adapter and create a new one.
+   */
+  private getOrCreateAdapter(framework: string): TestFrameworkAdapter {
+    if (this.cachedAdapter && this.cachedFramework === framework) {
+      this.vsCodeService.appendLine(`[SmartStartExecutor] Reusing cached ${framework} adapter`);
+      return this.cachedAdapter;
+    }
+
+    // Framework changed — dispose old adapter asynchronously
+    if (this.cachedAdapter) {
+      this.vsCodeService.appendLine(
+        `[SmartStartExecutor] Framework changed from ${this.cachedFramework} to ${framework} — disposing old adapter`,
+      );
+      const oldAdapter = this.cachedAdapter;
+      oldAdapter.dispose().catch(() => {
+        /* ignore */
+      });
+    }
+
+    this.vsCodeService.appendLine(`[SmartStartExecutor] Creating new ${framework} adapter`);
+    const adapter = this.createAdapter(framework);
+    this.cachedAdapter = adapter;
+    this.cachedFramework = framework;
+    return adapter;
+  }
 
   private createAdapter(framework: string): TestFrameworkAdapter {
     switch (framework) {
