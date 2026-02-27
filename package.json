@@ -8,7 +8,7 @@
     "url": "https://github.com/allanartuso/wallacy"
   },
   "engines": {
-    "vscode": "^1.109.0"
+    "vscode": "^1.104.2"
   },
   "categories": [
     "Other"
@@ -60,7 +60,7 @@
     "@types/babel__traverse": "^7.28.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
-    "@types/vscode": "^1.109.0",
+    "@types/vscode": "^1.104.0",
     "@types/ws": "^8.18.1",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
