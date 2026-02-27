@@ -18,8 +18,6 @@ export async function startCoreEngine(
   // 1. Core Engine Subsystems
   const vfs = new VirtualFileSystem();
 
-  // Configure DI container with workspace root
-  Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(workspaceRoot));
   const workspaceResolver = Container.get(NxWorkspaceResolver);
   const projectMapper = Container.get(FileToProjectMapper);
 

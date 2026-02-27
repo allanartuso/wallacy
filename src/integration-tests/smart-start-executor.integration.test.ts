@@ -110,7 +110,7 @@ describe("Calculator", () => {
 
       const graph = singleVitestProject();
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       Container.set(SmartStartResolver, new SmartStartResolver());
       const executor = new SmartStartExecutor();
@@ -161,7 +161,7 @@ describe("Calculator", () => {
       };
 
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       Container.set(SmartStartResolver, new SmartStartResolver());
       const executor = new SmartStartExecutor();
@@ -202,7 +202,7 @@ describe("Calculator", () => {
       };
 
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       Container.set(SmartStartResolver, new SmartStartResolver());
       const executor = new SmartStartExecutor();
@@ -223,7 +223,7 @@ describe("Calculator", () => {
 
       const graph = singleVitestProject("ui", "apps/ui");
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       Container.set(SmartStartResolver, new SmartStartResolver());
       const executor = new SmartStartExecutor();
@@ -250,7 +250,7 @@ describe("Calculator", () => {
 
       const graph = singleVitestProject("ui", "apps/ui");
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       Container.set(SmartStartResolver, new SmartStartResolver());
       const executor = new SmartStartExecutor();
@@ -275,7 +275,7 @@ describe("Calculator", () => {
 
       const graph = singleVitestProject("ui", "apps/ui");
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       Container.set(SmartStartResolver, new SmartStartResolver());
       const executor = new SmartStartExecutor();
@@ -302,7 +302,7 @@ describe("Calculator", () => {
 
       const graph = singleVitestProject("ui", "apps/ui");
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       Container.set(SmartStartResolver, new SmartStartResolver());
       const executor = new SmartStartExecutor();
@@ -329,7 +329,7 @@ describe("Calculator", () => {
 
       const graph: NxProjectGraph = {nodes: {}, dependencies: {}};
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       Container.set(SmartStartResolver, new SmartStartResolver());
       const executor = new SmartStartExecutor();
@@ -369,7 +369,7 @@ describe("Calculator", () => {
 
       const graph = singleVitestProject("ui", "apps/ui");
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       Container.set(SmartStartResolver, new SmartStartResolver());
       const executor = new SmartStartExecutor();
@@ -415,7 +415,7 @@ describe("Calculator", () => {
 
       const graph = singleVitestProject("portal", "apps/portal");
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       Container.set(SmartStartResolver, new SmartStartResolver());
       const executor = new SmartStartExecutor();
@@ -452,7 +452,7 @@ describe("Calculator", () => {
       };
 
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       Container.set(SmartStartResolver, new SmartStartResolver());
       const executor = new SmartStartExecutor();
@@ -476,7 +476,7 @@ describe("Calculator", () => {
 
       const graph = singleVitestProject("multi", "apps/multi");
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       Container.set(SmartStartResolver, new SmartStartResolver());
       const executor = new SmartStartExecutor();
@@ -493,7 +493,7 @@ describe("Calculator", () => {
 
       const graph = singleVitestProject("noconfig", "apps/noconfig");
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       Container.set(SmartStartResolver, new SmartStartResolver());
       const executor = new SmartStartExecutor();

@@ -1,7 +1,6 @@
 import * as path from "path";
 import Container, {Service} from "typedi";
 import {FileSystemWatcher} from "vscode";
-import {NxWorkspaceResolver} from "./core-engine/nx-resolver/workspace-resolver";
 import {IPCClient} from "./ipc-client";
 import type {SmartStartResult} from "./shared-types";
 import {SmartStartCallbacks, SmartStartExecutor} from "./smart-start-executor";
@@ -13,7 +12,8 @@ import {VsCodeService} from "./vs-code.service";
 export class SmartStartCommand {
   private readonly vsCodeService = Container.get(VsCodeService);
   private readonly iPCClient = Container.get(IPCClient);
-  private readonly session = Container.get(SmartStartSession);
+  private readonly smartStartSession = Container.get(SmartStartSession);
+  private readonly smartStartExecutor = Container.get(SmartStartExecutor);
 
   private pendingSmartStartFile: string | null = null;
   private fileWatcher: FileSystemWatcher | null = null;
@@ -77,20 +77,19 @@ export class SmartStartCommand {
     }
 
     this.workspaceRoot = workspaceFolder.uri.fsPath;
+    this.vsCodeService.appendLine("[Extension] Smart Start workspaceRoot: " + this.workspaceRoot);
 
     if (!isTestFile(filePath)) {
       this.vsCodeService.showErrorMessage(`${path.basename(filePath)} is not a test file (.test.ts, .spec.ts, etc)`);
       return;
     }
 
-    this.session.setWorkspaceRoot(this.workspaceRoot);
+    this.smartStartSession.setWorkspaceRoot(this.workspaceRoot);
 
     // ─── Drive the full resolution → execution pipeline ────
     this.pendingSmartStartFile = filePath;
 
     // Configure DI container with the workspace root, then resolve the executor
-    Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(this.workspaceRoot));
-    const executor = Container.get(SmartStartExecutor);
 
     this.vsCodeService.appendLine(`[Extension] Resolving project and framework for: ${path.basename(filePath)}`);
 
@@ -116,7 +115,7 @@ export class SmartStartCommand {
     };
 
     try {
-      const executeResult = await executor.execute(filePath, callbacks);
+      const executeResult = await this.smartStartExecutor.execute(filePath, callbacks);
 
       this.vsCodeService.appendLine(
         `[Extension] Smart Start complete — ` +
@@ -137,15 +136,15 @@ export class SmartStartCommand {
       `[Extension] Smart Start resolved: ${payload.project.name} (${payload.testFramework})`,
     );
 
-    if (!this.pendingSmartStartFile && this.session.isActive()) {
+    if (!this.pendingSmartStartFile && this.smartStartSession.isActive()) {
       // Get the file from the current session
-      const currentConfig = this.session.getCurrentConfig();
+      const currentConfig = this.smartStartSession.getCurrentConfig();
       if (currentConfig.file) {
-        this.session.initializeSession(currentConfig.file.absolutePath, payload);
+        this.smartStartSession.initializeSession(currentConfig.file.absolutePath, payload);
       }
     } else if (this.pendingSmartStartFile) {
       // Initialize session with the pending file
-      this.session.initializeSession(this.pendingSmartStartFile, payload);
+      this.smartStartSession.initializeSession(this.pendingSmartStartFile, payload);
       this.setupFileWatching();
     }
 
@@ -221,7 +220,7 @@ export class SmartStartCommand {
       this.vsCodeService.appendLine(`[Extension] Test file changed: ${path.basename(filePath)}`);
 
       // Check if this file is part of the same session
-      if (this.session?.shouldRunInSameSession(filePath)) {
+      if (this.smartStartSession?.shouldRunInSameSession(filePath)) {
         this.iPCClient.send("file-changed", {
           filePath: filePath,
         });
@@ -237,7 +236,7 @@ export class SmartStartCommand {
       this.fileWatcher.dispose();
     }
     this.iPCClient.disconnect();
-    this.session.clearSession();
+    this.smartStartSession.clearSession();
 
     this.vsCodeService.appendLine("[Extension] SmartStartCommand disposed");
   }

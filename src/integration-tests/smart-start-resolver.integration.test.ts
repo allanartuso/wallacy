@@ -128,7 +128,7 @@ describe("SmartStartResolver", () => {
       };
 
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       const resolver = new SmartStartResolver();
 
@@ -191,7 +191,7 @@ describe("SmartStartResolver", () => {
       };
 
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       const resolver = new SmartStartResolver();
 
@@ -237,7 +237,7 @@ describe("SmartStartResolver", () => {
       };
 
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       const resolver = new SmartStartResolver();
 
@@ -278,7 +278,7 @@ describe("SmartStartResolver", () => {
 
       // Empty Nx graph (not an Nx workspace)
       const bridge = createMockBridge({nodes: {}, dependencies: {}});
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       const resolver = new SmartStartResolver();
 
@@ -304,7 +304,7 @@ describe("SmartStartResolver", () => {
       const testFile = writeFile(tmpDir, "src/app.test.ts", "// test");
 
       const bridge = createMockBridge({nodes: {}, dependencies: {}});
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       const resolver = new SmartStartResolver();
 
@@ -328,7 +328,7 @@ describe("SmartStartResolver", () => {
       const testFile = writeFile(tmpDir, "src/app.spec.ts", "// test");
 
       const bridge = createMockBridge({nodes: {}, dependencies: {}});
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       const resolver = new SmartStartResolver();
 
@@ -388,7 +388,7 @@ describe("SmartStartResolver", () => {
       };
 
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       const resolver = new SmartStartResolver();
 
@@ -425,7 +425,7 @@ describe("SmartStartResolver", () => {
       };
 
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver(tmpDir, bridge));
+      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
       Container.set(FileToProjectMapper, new FileToProjectMapper());
       const resolver = new SmartStartResolver();
 

@@ -3,8 +3,9 @@
 // caches the Nx project graph using official @nx/devkit APIs.
 // ============================================================
 
-import {Service} from "typedi";
+import Container, {Service} from "typedi";
 import {NxProjectInfo, TargetConfiguration} from "../../shared-types";
+import {VsCodeService} from "../../vs-code.service";
 
 // ─── Types for the Nx devkit API surface we consume ─────────
 
@@ -79,15 +80,31 @@ export const createDefaultDevkitBridge = (): NxDevkitBridge => ({
 
 @Service()
 export class NxWorkspaceResolver {
+  private readonly vsCodeService = Container.get(VsCodeService);
   private cachedGraph: NxProjectGraph | null = null;
   private cachedProjects: Map<string, NxProjectInfo> = new Map();
   private cacheTimestamp = 0;
+  private readonly devkit: NxDevkitBridge = createDefaultDevkitBridge();
+  private readonly cacheTtlMs: number = 30_000;
 
-  constructor(
-    private readonly workspaceRoot: string = "",
-    private readonly devkit: NxDevkitBridge = createDefaultDevkitBridge(),
-    private readonly cacheTtlMs: number = 30_000,
-  ) {}
+  getWorkspaceRoot(): string {
+    const editor = this.vsCodeService.activeTextEditor;
+    if (!editor) {
+      this.vsCodeService.showErrorMessage("No active editor found");
+      throw new Error("No active editor found");
+    }
+
+    const workspaceFolder = this.vsCodeService.getWorkspaceFolder(editor.document.uri);
+
+    this.vsCodeService.appendLine("[Extension] Smart Start initiated for: " + editor.document.uri.fsPath);
+
+    if (!workspaceFolder) {
+      this.vsCodeService.showErrorMessage("File is not part of a workspace");
+      throw new Error("File is not part of a workspace");
+    }
+
+    return workspaceFolder.uri.fsPath;
+  }
 
   /**
    * Load (or return cached) the Nx project graph.
@@ -98,7 +115,7 @@ export class NxWorkspaceResolver {
     if (this.cachedGraph && now - this.cacheTimestamp < this.cacheTtlMs) {
       return this.cachedGraph;
     }
-    this.cachedGraph = await this.devkit.createProjectGraphAsync(this.workspaceRoot);
+    this.cachedGraph = await this.devkit.createProjectGraphAsync(this.getWorkspaceRoot());
     this.cacheTimestamp = now;
     this.rebuildProjectMap();
     return this.cachedGraph;
@@ -174,13 +191,6 @@ export class NxWorkspaceResolver {
     this.cachedGraph = null;
     this.cachedProjects.clear();
     this.cacheTimestamp = 0;
-  }
-
-  /**
-   * Get the workspace root path.
-   */
-  getWorkspaceRoot(): string {
-    return this.workspaceRoot;
   }
 
   // ─── Private ────────────────────────────────────────────

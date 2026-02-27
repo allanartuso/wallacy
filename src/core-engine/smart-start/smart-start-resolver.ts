@@ -55,20 +55,10 @@ const TEST_TARGET_NAMES = ["test", "test:unit", "unit-test", "spec"];
 
 @Service()
 export class SmartStartResolver {
-  private readonly fileMapper: FileToProjectMapper;
-  private readonly tsconfigResolver: TsconfigResolver;
-  private readonly testConfigResolver: TestConfigResolver;
-
-  constructor(
-    private readonly workspaceResolver: NxWorkspaceResolver = Container.get(NxWorkspaceResolver),
-    fileMapper?: FileToProjectMapper,
-    tsconfigResolver?: TsconfigResolver,
-    testConfigResolver?: TestConfigResolver,
-  ) {
-    this.fileMapper = fileMapper ?? Container.get(FileToProjectMapper);
-    this.tsconfigResolver = tsconfigResolver ?? Container.get(TsconfigResolver);
-    this.testConfigResolver = testConfigResolver ?? Container.get(TestConfigResolver);
-  }
+  private readonly fileMapper = Container.get(FileToProjectMapper);
+  private readonly tsconfigResolver = Container.get(TsconfigResolver);
+  private readonly testConfigResolver = Container.get(TestConfigResolver);
+  private readonly workspaceResolver = Container.get(NxWorkspaceResolver);
 
   /**
    * Resolve the Smart Start result for a given file path.

@@ -25,6 +25,7 @@ import type {
   TestResult,
 } from "./shared-types";
 import {JasmineAdapter, JestAdapter, VitestAdapter} from "./test-adapters";
+import {VsCodeService} from "./vs-code.service";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -48,14 +49,9 @@ export interface SmartStartExecuteResult {
 
 @Service()
 export class SmartStartExecutor {
-  private readonly resolver: SmartStartResolver;
-
-  constructor(
-    private readonly workspaceRoot: string = Container.get(NxWorkspaceResolver).getWorkspaceRoot(),
-    resolver?: SmartStartResolver,
-  ) {
-    this.resolver = resolver ?? Container.get(SmartStartResolver);
-  }
+  private readonly smartStartResolver: SmartStartResolver = Container.get(SmartStartResolver);
+  private readonly nxWorkspaceResolver = Container.get(NxWorkspaceResolver);
+  private readonly vsCodeService = Container.get(VsCodeService);
 
   /**
    * Full Smart Start pipeline for a given test file.
@@ -65,19 +61,21 @@ export class SmartStartExecutor {
    * @returns The complete result of the pipeline
    */
   async execute(filePath: string, callbacks?: SmartStartCallbacks): Promise<SmartStartExecuteResult> {
-    const log = (msg: string) => callbacks?.onLog?.(msg);
+    const root = this.nxWorkspaceResolver.getWorkspaceRoot();
+    this.vsCodeService.appendLine(
+      `[SmartStartExecutor] Starting Smart Start for: ${root} => ${path.basename(filePath)}`,
+    );
 
     // Step 1: Resolve everything
-    log(`[SmartStartExecutor] Resolving: ${path.basename(filePath)}`);
     let resolution: SmartStartResult;
     try {
-      resolution = await this.resolver.resolve(filePath);
+      resolution = await this.smartStartResolver.resolve(filePath);
     } catch (error: any) {
       callbacks?.onError?.(error);
       throw error;
     }
 
-    log(
+    this.vsCodeService.appendLine(
       `[SmartStartExecutor] Resolved: ${resolution.project.name} ` +
         `(${resolution.testFramework}), config: ${resolution.configPath ?? "none"}`,
     );
@@ -89,12 +87,12 @@ export class SmartStartExecutor {
     // Step 3: Resolve the absolute project root
     const absoluteProjectRoot = path.isAbsolute(resolution.project.root)
       ? resolution.project.root
-      : path.join(this.workspaceRoot, resolution.project.root);
+      : path.join(this.nxWorkspaceResolver.getWorkspaceRoot(), resolution.project.root);
 
     // Step 4: Discover tests
-    log(`[SmartStartExecutor] Discovering tests in: ${absoluteProjectRoot}`);
+    this.vsCodeService.appendLine(`[SmartStartExecutor] Discovering tests in: ${absoluteProjectRoot}`);
     const tests = await adapter.discoverTests(absoluteProjectRoot, resolution.configPath);
-    log(`[SmartStartExecutor] Discovered ${tests.length} test(s)`);
+    this.vsCodeService.appendLine(`[SmartStartExecutor] Discovered ${tests.length} test(s)`);
     callbacks?.onTestsDiscovered?.(tests);
 
     // Step 5: Set up lifecycle hooks for streaming
@@ -121,7 +119,7 @@ export class SmartStartExecutor {
       timeout: 30_000,
     };
 
-    log(`[SmartStartExecutor] Running tests...`);
+    this.vsCodeService.appendLine(`[SmartStartExecutor] Running tests...`);
     const executeResults = await adapter.executeTests([filePath], options);
 
     // Merge results from executeTests that weren't streamed via hooks
@@ -134,7 +132,7 @@ export class SmartStartExecutor {
 
     // Step 7: Collect final results
     const collected = await adapter.collectResults();
-    log(`[SmartStartExecutor] Run complete — ${allResults.length} result(s)`);
+    this.vsCodeService.appendLine(`[SmartStartExecutor] Run complete — ${allResults.length} result(s)`);
     callbacks?.onRunComplete?.(collected);
 
     // Cleanup
@@ -153,7 +151,7 @@ export class SmartStartExecutor {
    * Useful for quick framework/config detection.
    */
   async resolve(filePath: string): Promise<SmartStartResult> {
-    return this.resolver.resolve(filePath);
+    return this.smartStartResolver.resolve(filePath);
   }
 
   // ─── Private ──────────────────────────────────────────────
