@@ -87,12 +87,20 @@ export class SmartStartCommand {
 
     this.smartStartSession.setWorkspaceRoot(this.workspaceRoot);
 
+    await this.executeForFile(filePath);
+  }
+
+  /**
+   * Run the full Smart Start pipeline for a specific file.
+   * Called by `execute()` (from active editor) and by re-run (from remembered path).
+   */
+  async executeForFile(filePath: string) {
     // ─── Open the test results panel and wire up re-run ────
     this.testResultsPanel.createOrShow();
     this.testResultsPanel.notifyRunStarted(filePath);
-    this.testResultsPanel.onRerunRequested = () => {
-      this.vsCodeService.appendLine("[Extension] Re-run requested from panel");
-      this.execute();
+    this.testResultsPanel.onRerunRequested = (rememberedFile: string) => {
+      this.vsCodeService.appendLine("[Extension] Re-run requested from panel for: " + rememberedFile);
+      this.executeForFile(rememberedFile);
     };
 
     // ─── Drive the full resolution → execution pipeline ────

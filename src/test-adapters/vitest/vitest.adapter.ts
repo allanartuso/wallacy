@@ -115,10 +115,14 @@ export class VitestAdapter implements TestFrameworkAdapter {
         watch: false,
         reporters: ["default"],
         passWithNoTests: true,
-        // Capture console logs via Vitest's onConsoleLog hook
-        onConsoleLog: (log: string, type: "stdout" | "stderr") => {
-          const entry = this.parseConsoleLog(log, type);
+        // Capture console logs via Vitest's onConsoleLog hook.
+        // Signature: (log, type, taskId?) => boolean | void
+        // Returning false suppresses vitest's own printing.
+        onConsoleLog: (log: string, type: "stdout" | "stderr", taskId?: string) => {
+          const entry = this.parseConsoleLog(log, type, taskId);
           this.hooks?.onConsoleLog?.(entry);
+          // Return false to prevent vitest from also printing to stdout
+          return false;
         },
       };
 
@@ -373,28 +377,39 @@ export class VitestAdapter implements TestFrameworkAdapter {
 
   /**
    * Parse a raw console log string from Vitest into a ConsoleLogEntry.
-   * Vitest prepends "stdout | file.ts" or "stderr | file.ts" in some cases.
-   * We attempt to extract file/line information from the content.
+   *
+   * @param log     The raw log content
+   * @param stream  "stdout" or "stderr"
+   * @param taskId  Optional vitest task ID — this is typically the module/file path
    */
-  private parseConsoleLog(log: string, stream: "stdout" | "stderr"): ConsoleLogEntry {
+  private parseConsoleLog(log: string, stream: "stdout" | "stderr", taskId?: string): ConsoleLogEntry {
     let file: string | undefined;
     let line: number | undefined;
     let content = log;
+
+    // The taskId from Vitest is usually the absolute file path of the test module
+    if (taskId) {
+      file = taskId;
+    }
 
     // Try to extract file info from vitest's console log format
     // Vitest logs look like: "stdout | src/file.ts > suite > test"
     const headerMatch = log.match(/^(stdout|stderr)\s+\|\s+(.+?)(?:\s*>\s*.+)?\n([\s\S]*)$/);
     if (headerMatch) {
-      file = headerMatch[2].trim();
+      if (!file) {
+        file = headerMatch[2].trim();
+      }
       content = headerMatch[3] || log;
     }
 
     // Also try to find source location from a stack-like pattern in content
     // e.g. "at Object.<anonymous> (src/file.ts:42:15)"
-    if (!file) {
+    if (!line) {
       const stackMatch = content.match(/(?:at\s+.*?\(|❯\s*|at\s+)([A-Za-z]:[\\/].*?|\/.*?):(\d+)/);
       if (stackMatch) {
-        file = stackMatch[1];
+        if (!file) {
+          file = stackMatch[1];
+        }
         line = parseInt(stackMatch[2], 10);
       }
     }
