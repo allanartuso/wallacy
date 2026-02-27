@@ -56,7 +56,10 @@ function cleanup(dir: string): void {
 function makeOptions(projectRoot: string): ExecutionOptions {
   return {
     projectRoot,
+    workspaceRoot: projectRoot,
     configPath: null,
+    tsconfigPath: null,
+    pathAliases: {},
     instrumentation: {
       lineCoverage: false,
       branchCoverage: false,

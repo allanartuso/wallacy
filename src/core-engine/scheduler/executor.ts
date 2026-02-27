@@ -6,22 +6,13 @@
 // IPC server in real-time.
 // ============================================================
 
-import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import type { TestRunRequest } from "./execution-queue";
-import type { IPCServer } from "../ipc/server";
-import type { FileToProjectMapper } from "../nx-resolver/file-mapper";
-import {
-  TestFrameworkAdapter,
-  ExecutionOptions,
-  NxProjectInfo,
-} from "../../shared-types";
-import {
-  AdapterAutoDetector,
-  VitestAdapter,
-  JestAdapter,
-  JasmineAdapter,
-} from "../../test-adapters";
+import * as path from "node:path";
+import {ExecutionOptions, NxProjectInfo, TestFrameworkAdapter} from "../../shared-types";
+import {AdapterAutoDetector, JasmineAdapter, JestAdapter, VitestAdapter} from "../../test-adapters";
+import type {IPCServer} from "../ipc/server";
+import type {FileToProjectMapper} from "../nx-resolver/file-mapper";
+import type {TestRunRequest} from "./execution-queue";
 
 export class TestExecutor {
   private adapters = new Map<string, TestFrameworkAdapter>();
@@ -59,10 +50,7 @@ export class TestExecutor {
       for (const [projectName, testFiles] of projectGroups.entries()) {
         if (signal?.aborted) throw new Error("Aborted");
 
-        const project =
-          await this.projectMapper.workspaceResolver.getProjectByName(
-            projectName,
-          );
+        const project = await this.projectMapper.workspaceResolver.getProjectByName(projectName);
         if (!project) continue;
 
         const adapter = await this.getAdapterForProject(project);
@@ -93,7 +81,10 @@ export class TestExecutor {
 
         const options: ExecutionOptions = {
           projectRoot: absoluteProjectRoot,
+          workspaceRoot: this.workspaceRoot,
           configPath,
+          tsconfigPath: null,
+          pathAliases: {},
           instrumentation: {
             lineCoverage: false,
             branchCoverage: false,
@@ -107,9 +98,7 @@ export class TestExecutor {
         console.log(
           `[Executor] Running ${testFiles.size === 0 ? "all" : testFiles.size} test(s) for project: ${projectName}`,
         );
-        console.log(
-          `[Executor] projectRoot: ${absoluteProjectRoot}, configPath: ${configPath}`,
-        );
+        console.log(`[Executor] projectRoot: ${absoluteProjectRoot}, configPath: ${configPath}`);
 
         // Start execution — results stream back via onTestEnd hook
         await adapter.executeTests(Array.from(testFiles), options);
@@ -127,7 +116,7 @@ export class TestExecutor {
       });
     } catch (error: any) {
       console.error(`[Executor] Execution failed: ${error.message}`);
-      this.server.broadcast("error", { message: error.message });
+      this.server.broadcast("error", {message: error.message});
       this.server.broadcast("test-run-complete", {
         timestamp: Date.now(),
         status: "error",
@@ -138,9 +127,7 @@ export class TestExecutor {
     }
   }
 
-  private async groupTestsByProject(
-    testFiles: Set<string>,
-  ): Promise<Map<string, Set<string>>> {
+  private async groupTestsByProject(testFiles: Set<string>): Promise<Map<string, Set<string>>> {
     const groups = new Map<string, Set<string>>();
     for (const file of testFiles) {
       const projects = await this.projectMapper.mapFileToProjects(file);
@@ -153,13 +140,8 @@ export class TestExecutor {
     return groups;
   }
 
-  private async getAdapterForProject(
-    project: NxProjectInfo,
-  ): Promise<TestFrameworkAdapter> {
-    const framework = await AdapterAutoDetector.detectFramework(
-      project,
-      this.workspaceRoot,
-    );
+  private async getAdapterForProject(project: NxProjectInfo): Promise<TestFrameworkAdapter> {
+    const framework = await AdapterAutoDetector.detectFramework(project, this.workspaceRoot);
     // Always create a fresh adapter — the VitestAdapter creates a new Vitest instance
     // per executeTests() call and caching would cause stale hook references.
     let adapter: TestFrameworkAdapter;
@@ -183,9 +165,7 @@ export class TestExecutor {
    * Find the test config file for a project (absolute path).
    * Checks for vitest.config.ts, vite.config.ts, jest.config.ts, etc.
    */
-  private async resolveConfigPath(
-    absoluteProjectRoot: string,
-  ): Promise<string | null> {
+  private async resolveConfigPath(absoluteProjectRoot: string): Promise<string | null> {
     const candidates = [
       "vitest.config.ts",
       "vitest.config.js",

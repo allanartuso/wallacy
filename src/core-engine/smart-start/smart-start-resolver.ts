@@ -91,7 +91,13 @@ export class SmartStartResolver {
     // Step 2: Resolve closest tsconfig.json for path alias support
     const tsconfigInfo = await this.tsconfigResolver.findClosestTsconfig(filePath, workspaceRoot);
     const tsconfigPath = tsconfigInfo?.tsconfigPath ?? null;
-    const pathAliases = tsconfigInfo?.rawPaths ?? {};
+    // Store resolved (absolute) path aliases so consumers can use them directly
+    const pathAliases: Record<string, string[]> = {};
+    if (tsconfigInfo) {
+      for (const alias of tsconfigInfo.pathAliases) {
+        pathAliases[alias.alias] = alias.paths;
+      }
+    }
     console.log(`[SmartStartResolver] tsconfig: ${tsconfigPath || "(none found)"}`);
     if (Object.keys(pathAliases).length > 0) {
       console.log(`[SmartStartResolver] Path aliases: ${Object.keys(pathAliases).join(", ")}`);

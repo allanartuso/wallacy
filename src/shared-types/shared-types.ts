@@ -177,8 +177,14 @@ export interface BranchCoverage {
 export interface ExecutionOptions {
   /** Absolute path to project root */
   projectRoot: string;
+  /** Absolute path to the workspace / monorepo root (where node_modules lives) */
+  workspaceRoot: string;
   /** Path to framework config */
   configPath: string | null;
+  /** Absolute path to the closest tsconfig.json (for path alias resolution) */
+  tsconfigPath: string | null;
+  /** Resolved TypeScript path aliases — keys are alias patterns, values are absolute paths */
+  pathAliases: Record<string, string[]>;
   /** Instrumentation options */
   instrumentation: InstrumentationOptions;
   /** Timeout per test in ms */

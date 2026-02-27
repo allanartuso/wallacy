@@ -160,7 +160,9 @@ export class SmartStartCommand {
     this.vsCodeService.appendLine(`[Extension] Discovered ${tests.length} test(s)`);
 
     if (tests.length > 0) {
-      this.vsCodeService.appendLine(`[Extension] Test files: ${tests.map((t) => path.basename(t.file)).join(", ")}`);
+      // this.vsCodeService.appendLine(`[Extension] Test files: ${tests.map((t) => path.basename(t.file)).join(", ")}`);
+    } else {
+      this.vsCodeService.appendLine(`[Extension] No tests discovered`);
     }
   }
 

@@ -238,6 +238,13 @@ describe("TsconfigResolver", () => {
       expect(result.extendsChain).toHaveLength(2);
       expect(result.extendsChain[0]).toBe(childPath);
       expect(result.extendsChain[1]).toBe(path.join(tmpDir, "tsconfig.base.json"));
+
+      // baseUrl should resolve relative to the ROOT tsconfig (where it's declared),
+      // not the child tsconfig's directory.
+      expect(result.baseUrl).toBe(tmpDir);
+
+      // Path aliases should be resolved relative to the workspace root (where baseUrl points)
+      expect(result.pathAliases[0].paths[0]).toBe(path.resolve(tmpDir, "libs/shared/src/*"));
     });
 
     it("should merge paths from child and parent (child wins)", async () => {
@@ -314,6 +321,11 @@ describe("TsconfigResolver", () => {
 
       expect(result.extendsChain).toHaveLength(3);
       expect(result.rawPaths["@root/*"]).toEqual(["src/*"]);
+
+      // baseUrl "." declared in tsconfig.root.json (at workspace root)
+      // must resolve to the workspace root, not the leaf app directory
+      expect(result.baseUrl).toBe(tmpDir);
+      expect(result.pathAliases[0].paths[0]).toBe(path.resolve(tmpDir, "src/*"));
     });
   });
 
@@ -432,9 +444,23 @@ describe("TsconfigResolver", () => {
       expect(result!.rawPaths["@myorg/shared"]).toEqual(["libs/shared/src/index.ts"]);
       expect(result!.rawPaths["@myorg/utils"]).toEqual(["libs/utils/src/index.ts"]);
 
-      // Resolve a module
+      // baseUrl should resolve relative to the ROOT tsconfig (where it's declared),
+      // not the child tsconfig at apps/my-app/
+      expect(result!.baseUrl).toBe(tmpDir);
+
+      // Resolved path aliases must point to the workspace root, not the app directory
+      const sharedAlias = result!.pathAliases.find((a) => a.alias === "@myorg/shared");
+      expect(sharedAlias).toBeDefined();
+      expect(sharedAlias!.paths[0]).toBe(path.resolve(tmpDir, "libs/shared/src/index.ts"));
+
+      const utilsAlias = result!.pathAliases.find((a) => a.alias === "@myorg/utils");
+      expect(utilsAlias).toBeDefined();
+      expect(utilsAlias!.paths[0]).toBe(path.resolve(tmpDir, "libs/utils/src/index.ts"));
+
+      // Resolve a module — should point to workspace root paths
       const resolved = resolver.resolveModuleWithPaths("@myorg/shared/models", result!);
       expect(resolved).not.toBeNull();
+      expect(resolved![0]).toBe(path.resolve(tmpDir, "libs/shared/src/models"));
     });
   });
 });

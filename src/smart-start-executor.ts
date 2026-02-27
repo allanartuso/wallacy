@@ -108,7 +108,10 @@ export class SmartStartExecutor {
     // Step 6: Execute tests
     const options: ExecutionOptions = {
       projectRoot: absoluteProjectRoot,
+      workspaceRoot: this.nxWorkspaceResolver.getWorkspaceRoot(),
       configPath: resolution.configPath,
+      tsconfigPath: resolution.tsconfigPath,
+      pathAliases: resolution.pathAliases,
       instrumentation: {
         lineCoverage: false,
         branchCoverage: false,

@@ -19,7 +19,7 @@ export class UnownedFileError extends Error {
 
 @Service()
 export class FileToProjectMapper {
-  private readonly workspaceResolver: NxWorkspaceResolver = Container.get(NxWorkspaceResolver);
+  readonly workspaceResolver: NxWorkspaceResolver = Container.get(NxWorkspaceResolver);
 
   /**
    * Map a file path to its owning Nx project(s).

@@ -50,6 +50,7 @@ export class VitestAdapter implements TestFrameworkAdapter {
     const runStart = Date.now();
 
     const normalizedRoot = this.normalizePath(options.projectRoot);
+    const normalizedWorkspaceRoot = this.normalizePath(options.workspaceRoot);
     const normalizedConfig = options.configPath ? this.normalizePath(options.configPath) : undefined;
 
     // Convert input files to relative paths from project root
@@ -58,28 +59,43 @@ export class VitestAdapter implements TestFrameworkAdapter {
       return path.relative(normalizedRoot, abs).replace(/\\/g, "/");
     });
 
+    // Absolute normalized file paths — used as CLI filters when a config is present
+    // so vitest can unambiguously match regardless of its resolved root.
+    const absFiles = testFiles.map((f) => this.normalizePath(path.resolve(f)));
+
+    // When a config file is provided, cwd should be the workspace root
+    // (monorepo root) because that's where the user normally runs vitest from,
+    // and plugins like vite-tsconfig-paths may rely on cwd for resolution.
+    // Without a config, use the project root directly.
+    const targetCwd = normalizedConfig ? normalizedWorkspaceRoot : normalizedRoot;
+
     const originalCwd = process.cwd();
     try {
-      process.chdir(normalizedRoot);
+      process.chdir(targetCwd);
     } catch (err) {
-      this.vsCodeService.appendLine(`[VitestAdapter] Failed to chdir to ${normalizedRoot}: ` + err);
+      this.vsCodeService.appendLine(`[VitestAdapter] Failed to chdir to ${targetCwd}: ` + err);
     }
 
     let vitest: any = null;
 
     this.vsCodeService.appendLine("[VitestAdapter] Starting test run for files: " + relFiles.join(", "));
+    this.vsCodeService.appendLine(`[VitestAdapter] projectRoot: ${normalizedRoot}`);
+    this.vsCodeService.appendLine(`[VitestAdapter] workspaceRoot: ${normalizedWorkspaceRoot}`);
+    this.vsCodeService.appendLine(`[VitestAdapter] cwd: ${targetCwd}`);
+    this.vsCodeService.appendLine(`[VitestAdapter] config: ${normalizedConfig ?? "none"}`);
     try {
-      // Resolve vitest/node from the USER'S project, not from the extension bundle.
+      // Resolve vitest/node from the USER'S workspace, not from the extension bundle.
       // `import("vitest/node")` would resolve relative to the extension install dir
-      // where vitest is not installed. createRequire anchors resolution to the project.
-      // Fallback: if the project root doesn't have vitest (e.g. in test context),
+      // where vitest is not installed. createRequire anchors resolution to the
+      // workspace root (monorepo root) where node_modules/vitest is installed.
+      // Fallback: if the workspace root doesn't have vitest (e.g. in test context),
       // use a direct dynamic import which resolves from the current process's node_modules.
       let vitestNode: any;
       try {
         // Use the native OS path (not forward-slash normalized) so createRequire
         // can walk node_modules correctly on Windows.
-        const nativeRoot = path.resolve(options.projectRoot);
-        const anchorUrl = pathToFileURL(path.join(nativeRoot, "__placeholder__.js")).href;
+        const nativeWorkspaceRoot = path.resolve(options.workspaceRoot);
+        const anchorUrl = pathToFileURL(path.join(nativeWorkspaceRoot, "__placeholder__.js")).href;
         this.vsCodeService.appendLine(`[VitestAdapter] Resolving vitest/node from: ${anchorUrl}`);
         const projectRequire = createRequire(anchorUrl);
         const vitestNodePath = projectRequire.resolve("vitest/node");
@@ -87,7 +103,7 @@ export class VitestAdapter implements TestFrameworkAdapter {
         vitestNode = await import(pathToFileURL(vitestNodePath).href);
       } catch (resolveErr: any) {
         this.vsCodeService.appendLine(
-          `[VitestAdapter] Failed to resolve vitest from project root: ${resolveErr.message}`,
+          `[VitestAdapter] Failed to resolve vitest from workspace root: ${resolveErr.message}`,
         );
         vitestNode = await import("vitest/node");
       }
@@ -98,8 +114,16 @@ export class VitestAdapter implements TestFrameworkAdapter {
         watch: false,
         reporters: ["default"],
         passWithNoTests: true,
-        include: relFiles,
       };
+
+      // Only override the `include` glob when there's NO config file.
+      // When a config is present, its own `include` patterns handle test
+      // file discovery.  Overriding it with specific file paths breaks
+      // vitest's glob-based discovery.  The 2nd argument to startVitest
+      // (cliFilters / relFiles) already filters to the desired files.
+      if (!normalizedConfig) {
+        cliOptions.include = relFiles;
+      }
 
       if (normalizedConfig) {
         cliOptions.config = normalizedConfig;
@@ -108,13 +132,42 @@ export class VitestAdapter implements TestFrameworkAdapter {
         cliOptions.config = false;
       }
 
-      // Build Vite overrides
-      const viteOverrides: Record<string, any> = {
-        root: normalizedRoot,
-      };
+      // Build Vite overrides — only set root when there's no config file.
+      // When a config is provided, it already defines its own root and may
+      // rely on plugins (e.g. vite-tsconfig-paths) that resolve paths
+      // relative to that root. Overriding root here would break those.
+      const viteOverrides: Record<string, any> = {};
+      if (!normalizedConfig) {
+        viteOverrides.root = normalizedRoot;
+      }
+
+      // Inject tsconfig path aliases as Vite resolve.alias entries.
+      // This ensures that imports like `@shared/utils` resolve correctly
+      // even if the project's vitest config doesn't include vite-tsconfig-paths.
+      const resolvedAliases = this.buildViteAliases(options.pathAliases);
+      if (Object.keys(resolvedAliases).length > 0) {
+        viteOverrides.resolve = {
+          ...viteOverrides.resolve,
+          alias: resolvedAliases,
+        };
+        this.vsCodeService.appendLine(
+          `[VitestAdapter] Injected ${Object.keys(resolvedAliases).length} path alias(es)}`,
+        );
+      }
+
+      // Choose the file list for startVitest's 2nd argument (cliFilters).
+      // With a config: use absolute paths so vitest matches files unambiguously
+      //   regardless of its resolved root.
+      // Without a config: use relative paths (which are also the include glob).
+      const filterFiles = normalizedConfig ? absFiles : relFiles;
+
+      this.vsCodeService.appendLine(
+        `[VitestAdapter] Vitest CLI options: ${JSON.stringify(cliOptions)}, Vite overrides keys: ${JSON.stringify(Object.keys(viteOverrides))}`,
+      );
+      this.vsCodeService.appendLine(`[VitestAdapter] CLI filters (2nd arg): ${JSON.stringify(filterFiles)}`);
 
       // Start Vitest — it runs tests and returns the instance
-      vitest = await startVitest("test", relFiles, cliOptions, viteOverrides);
+      vitest = await startVitest("test", filterFiles, cliOptions, viteOverrides);
 
       if (!vitest) {
         this.vsCodeService.appendLine("[VitestAdapter] startVitest returned null — tests may have failed to start");
@@ -123,6 +176,10 @@ export class VitestAdapter implements TestFrameworkAdapter {
 
       // Extract results from TestModules using Vitest's state API
       const testModules = vitest.state.getTestModules();
+      this.vsCodeService.appendLine(`[VitestAdapter] Test modules found: ${testModules.length}`);
+      if (testModules.length === 0) {
+        this.vsCodeService.appendLine("[VitestAdapter] No test modules — vitest may not have matched any files");
+      }
       for (const testModule of testModules) {
         const moduleId: string = testModule.moduleId;
 
@@ -267,6 +324,46 @@ export class VitestAdapter implements TestFrameworkAdapter {
   }
 
   // ─── Helpers ──────────────────────────────────────────────
+
+  /**
+   * Convert resolved tsconfig path aliases into Vite `resolve.alias` entries.
+   *
+   * tsconfig paths format (resolved to absolute paths):
+   *   { "@shared/*": ["C:/abs/libs/shared/src/*"], "@core": ["C:/abs/libs/core/src/index.ts"] }
+   *
+   * Vite alias format (what we produce):
+   *   { "@shared": "C:/abs/libs/shared/src", "@core": "C:/abs/libs/core/src/index.ts" }
+   *
+   * For wildcard aliases (`@shared/*`), we strip the trailing `/*` from both
+   * the key and the first mapped path so Vite can do prefix matching.
+   * Non-wildcard aliases are passed through as-is.
+   * Paths are normalized to forward slashes for Vite compatibility.
+   */
+  private buildViteAliases(pathAliases: Record<string, string[]>): Record<string, string> {
+    const aliases: Record<string, string> = {};
+
+    for (const [pattern, targets] of Object.entries(pathAliases)) {
+      if (!targets || targets.length === 0) {
+        continue;
+      }
+
+      // Normalize to forward slashes for Vite
+      const firstTarget = targets[0].replace(/\\/g, "/");
+
+      if (pattern.endsWith("/*")) {
+        // Wildcard alias: "@shared/*" → "@shared"
+        const aliasKey = pattern.slice(0, -2);
+        // Strip trailing /* or * from the resolved path
+        const aliasValue = firstTarget.replace(/\/?\*$/, "");
+        aliases[aliasKey] = aliasValue;
+      } else {
+        // Exact alias — use as-is
+        aliases[pattern] = firstTarget;
+      }
+    }
+
+    return aliases;
+  }
 
   private normalizePath(p: string): string {
     const absolute = path.resolve(p);

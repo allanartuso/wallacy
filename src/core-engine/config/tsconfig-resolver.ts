@@ -81,15 +81,17 @@ export class TsconfigResolver {
    */
   async parseTsconfig(tsconfigPath: string): Promise<TsconfigInfo> {
     const extendsChain: string[] = [];
-    const mergedCompilerOptions = this.resolveExtendsChain(tsconfigPath, extendsChain);
+    const {options: mergedCompilerOptions, baseUrlOriginDir} = this.resolveExtendsChain(tsconfigPath, extendsChain);
 
     const configDir = path.dirname(tsconfigPath);
 
-    // Resolve baseUrl relative to the tsconfig that declares it
+    // Resolve baseUrl relative to the tsconfig that DECLARES it.
+    // If baseUrl: "." comes from tsconfig.base.json at the workspace root,
+    // it must resolve relative to that root — not the child tsconfig's directory.
     const rawBaseUrl = mergedCompilerOptions.baseUrl;
-    const baseUrl = rawBaseUrl ? path.resolve(configDir, rawBaseUrl) : null;
+    const baseUrl = rawBaseUrl ? path.resolve(baseUrlOriginDir ?? configDir, rawBaseUrl) : null;
 
-    // Resolve paths
+    // Resolve paths relative to baseUrl (or the baseUrl origin dir, or configDir)
     const rawPaths: Record<string, string[]> = mergedCompilerOptions.paths ?? {};
     const pathAliases = this.resolvePathAliases(rawPaths, baseUrl ?? configDir);
 
@@ -171,40 +173,57 @@ export class TsconfigResolver {
   }
 
   /**
-   * Follow the "extends" chain and merge compilerOptions bottom-up.
-   * Child values override parent values. Paths are merged (child wins).
+   * Result of resolving the extends chain — carries merged compilerOptions
+   * plus the directory of the tsconfig that actually declared `baseUrl`.
+   * This is critical: if `baseUrl: "."` comes from a root tsconfig.base.json,
+   * it must be resolved relative to the root directory, not the child's.
    */
-  private resolveExtendsChain(tsconfigPath: string, chain: string[], visited = new Set<string>()): Record<string, any> {
+  private resolveExtendsChain(
+    tsconfigPath: string,
+    chain: string[],
+    visited = new Set<string>(),
+  ): {options: Record<string, any>; baseUrlOriginDir: string | null} {
     const normalized = this.normalizePath(tsconfigPath);
     if (visited.has(normalized)) {
-      return {}; // circular extends
+      return {options: {}, baseUrlOriginDir: null}; // circular extends
     }
     visited.add(normalized);
     chain.push(tsconfigPath);
 
     const content = this.readJsonWithComments(tsconfigPath);
     if (!content) {
-      return {};
+      return {options: {}, baseUrlOriginDir: null};
     }
 
-    let parentOptions: Record<string, any> = {};
+    let parentResult: {options: Record<string, any>; baseUrlOriginDir: string | null} = {
+      options: {},
+      baseUrlOriginDir: null,
+    };
     if (content.extends) {
       const extendsPath = this.resolveExtendsPath(content.extends, path.dirname(tsconfigPath));
       if (extendsPath) {
-        parentOptions = this.resolveExtendsChain(extendsPath, chain, visited);
+        parentResult = this.resolveExtendsChain(extendsPath, chain, visited);
       }
     }
 
     // Merge: parent first, then child overrides
     const childOptions = content.compilerOptions ?? {};
-    const merged = {...parentOptions, ...childOptions};
+    const merged = {...parentResult.options, ...childOptions};
 
     // Special handling for paths: merge rather than replace
-    if (parentOptions.paths && childOptions.paths) {
-      merged.paths = {...parentOptions.paths, ...childOptions.paths};
+    if (parentResult.options.paths && childOptions.paths) {
+      merged.paths = {...parentResult.options.paths, ...childOptions.paths};
     }
 
-    return merged;
+    // Track which tsconfig's directory declared `baseUrl`.
+    // If the child explicitly sets baseUrl, use its directory.
+    // Otherwise, inherit the parent's baseUrl origin.
+    let baseUrlOriginDir = parentResult.baseUrlOriginDir;
+    if (childOptions.baseUrl !== undefined) {
+      baseUrlOriginDir = path.dirname(tsconfigPath);
+    }
+
+    return {options: merged, baseUrlOriginDir};
   }
 
   /**
