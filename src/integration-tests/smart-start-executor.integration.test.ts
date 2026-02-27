@@ -34,7 +34,11 @@ function writeFile(dir: string, relativePath: string, content: string): string {
 }
 
 function cleanup(dir: string): void {
-  fs.rmSync(dir, {recursive: true, force: true});
+  try {
+    fs.rmSync(dir, {recursive: true, force: true, maxRetries: 3, retryDelay: 100});
+  } catch {
+    // Ignore cleanup errors — temp dir will be cleaned up by OS
+  }
 }
 
 function createMockBridge(graph: NxProjectGraph): NxDevkitBridge {
@@ -43,6 +47,19 @@ function createMockBridge(graph: NxProjectGraph): NxDevkitBridge {
       return graph;
     },
   };
+}
+
+/**
+ * Helper: create an NxWorkspaceResolver wired with a mock bridge and workspace root,
+ * register it (and dependent services) in the DI container.
+ */
+function setupContainer(workspaceRoot: string, graph: NxProjectGraph): void {
+  const resolver = new NxWorkspaceResolver();
+  resolver.setWorkspaceRoot(workspaceRoot);
+  resolver.setDevkitBridge(createMockBridge(graph));
+  Container.set(NxWorkspaceResolver, resolver);
+  Container.set(FileToProjectMapper, new FileToProjectMapper());
+  Container.set(SmartStartResolver, new SmartStartResolver());
 }
 
 /**
@@ -110,9 +127,7 @@ describe("Calculator", () => {
 
       const graph = singleVitestProject();
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
-      Container.set(SmartStartResolver, new SmartStartResolver());
+      setupContainer(tmpDir, graph);
       const executor = new SmartStartExecutor();
       const result = await executor.execute(testFile);
 
@@ -161,9 +176,7 @@ describe("Calculator", () => {
       };
 
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
-      Container.set(SmartStartResolver, new SmartStartResolver());
+      setupContainer(tmpDir, graph);
       const executor = new SmartStartExecutor();
       const result = await executor.execute(testFile);
 
@@ -203,9 +216,7 @@ describe("Calculator", () => {
       };
 
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
-      Container.set(SmartStartResolver, new SmartStartResolver());
+      setupContainer(tmpDir, graph);
       const executor = new SmartStartExecutor();
       const result = await executor.execute(testFile);
 
@@ -224,9 +235,7 @@ describe("Calculator", () => {
 
       const graph = singleVitestProject("ui", "apps/ui");
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
-      Container.set(SmartStartResolver, new SmartStartResolver());
+      setupContainer(tmpDir, graph);
       const executor = new SmartStartExecutor();
 
       let resolvedResult: SmartStartResult | null = null;
@@ -251,9 +260,7 @@ describe("Calculator", () => {
 
       const graph = singleVitestProject("ui", "apps/ui");
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
-      Container.set(SmartStartResolver, new SmartStartResolver());
+      setupContainer(tmpDir, graph);
       const executor = new SmartStartExecutor();
 
       let discoveredTests: TestInfo[] = [];
@@ -276,9 +283,7 @@ describe("Calculator", () => {
 
       const graph = singleVitestProject("ui", "apps/ui");
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
-      Container.set(SmartStartResolver, new SmartStartResolver());
+      setupContainer(tmpDir, graph);
       const executor = new SmartStartExecutor();
 
       const logs: string[] = [];
@@ -303,9 +308,7 @@ describe("Calculator", () => {
 
       const graph = singleVitestProject("ui", "apps/ui");
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
-      Container.set(SmartStartResolver, new SmartStartResolver());
+      setupContainer(tmpDir, graph);
       const executor = new SmartStartExecutor();
 
       let runComplete: CollectedResults | null = null;
@@ -330,9 +333,7 @@ describe("Calculator", () => {
 
       const graph: NxProjectGraph = {nodes: {}, dependencies: {}};
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
-      Container.set(SmartStartResolver, new SmartStartResolver());
+      setupContainer(tmpDir, graph);
       const executor = new SmartStartExecutor();
 
       let resolvedResult: SmartStartResult | null = null;
@@ -370,9 +371,7 @@ describe("Calculator", () => {
 
       const graph = singleVitestProject("ui", "apps/ui");
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
-      Container.set(SmartStartResolver, new SmartStartResolver());
+      setupContainer(tmpDir, graph);
       const executor = new SmartStartExecutor();
       const result = await executor.resolve(testFile);
 
@@ -380,7 +379,7 @@ describe("Calculator", () => {
       expect(result.testFramework).toBe("vitest");
       expect(result.configPath).toBe(path.join(tmpDir, "apps", "ui", "vitest.config.ts"));
       expect(result.tsconfigPath).toBe(path.join(tmpDir, "apps", "ui", "tsconfig.json"));
-      expect(result.pathAliases["@ui/*"]).toEqual(["src/*"]);
+      expect(result.pathAliases["@ui/*"]).toEqual([path.join(tmpDir, "apps", "ui", "src/*")]);
     });
   });
 
@@ -416,15 +415,13 @@ describe("Calculator", () => {
 
       const graph = singleVitestProject("portal", "apps/portal");
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
-      Container.set(SmartStartResolver, new SmartStartResolver());
+      setupContainer(tmpDir, graph);
       const executor = new SmartStartExecutor();
       const result = await executor.execute(testFile);
 
       expect(result.resolution.tsconfigPath).toBe(path.join(tmpDir, "apps", "portal", "tsconfig.json"));
       // Path aliases should be resolved from the extends chain
-      expect(result.resolution.pathAliases["@shared/*"]).toEqual(["libs/shared/src/*"]);
+      expect(result.resolution.pathAliases["@shared/*"]).toEqual([path.join(tmpDir, "libs/shared/src/*")]);
     });
   });
 
@@ -453,9 +450,7 @@ describe("Calculator", () => {
       };
 
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
-      Container.set(SmartStartResolver, new SmartStartResolver());
+      setupContainer(tmpDir, graph);
       const executor = new SmartStartExecutor();
 
       // SmartStartResolver falls back to "jest" when no framework config is detected
@@ -478,9 +473,7 @@ describe("Calculator", () => {
 
       const graph = singleVitestProject("multi", "apps/multi");
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
-      Container.set(SmartStartResolver, new SmartStartResolver());
+      setupContainer(tmpDir, graph);
       const executor = new SmartStartExecutor();
       const result = await executor.execute(testFile);
 
@@ -495,9 +488,7 @@ describe("Calculator", () => {
 
       const graph = singleVitestProject("noconfig", "apps/noconfig");
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
-      Container.set(SmartStartResolver, new SmartStartResolver());
+      setupContainer(tmpDir, graph);
       const executor = new SmartStartExecutor();
       const result = await executor.execute(testFile);
 

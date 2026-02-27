@@ -10,7 +10,7 @@ import * as path from "node:path";
 import Container from "typedi";
 import {afterEach, beforeEach, describe, expect, it} from "vitest";
 import {FileToProjectMapper} from "../core-engine/nx-resolver/file-mapper";
-import {NxDevkitBridge, NxProjectGraph} from "../core-engine/nx-resolver/workspace-resolver";
+import {NxDevkitBridge, NxProjectGraph, NxWorkspaceResolver} from "../core-engine/nx-resolver/workspace-resolver";
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -35,6 +35,18 @@ function createMockBridge(graph: NxProjectGraph): NxDevkitBridge {
       return graph;
     },
   };
+}
+
+/**
+ * Set up the DI container with a workspace resolver that uses the given
+ * tmpDir as workspace root and the provided Nx project graph.
+ */
+function setupContainer(tmpDir: string, graph: NxProjectGraph): void {
+  const resolver = new NxWorkspaceResolver();
+  resolver.setWorkspaceRoot(tmpDir);
+  resolver.setDevkitBridge(createMockBridge(graph));
+  Container.set(NxWorkspaceResolver, resolver);
+  Container.set(FileToProjectMapper, new FileToProjectMapper());
 }
 
 // ─── Tests ──────────────────────────────────────────────────
@@ -84,7 +96,8 @@ describe("FileToProjectMapper", () => {
         dependencies: {},
       };
 
-      const mapper = new FileToProjectMapper();
+      setupContainer(tmpDir, graph);
+      const mapper = Container.get(FileToProjectMapper);
 
       const projects = await mapper.mapFileToProjects(path.join(tmpDir, "apps", "frontend", "src", "app.spec.ts"));
 
@@ -122,7 +135,8 @@ describe("FileToProjectMapper", () => {
         dependencies: {},
       };
 
-      const mapper = new FileToProjectMapper();
+      setupContainer(tmpDir, graph);
+      const mapper = Container.get(FileToProjectMapper);
 
       const projects = await mapper.mapFileToProjects(
         path.join(tmpDir, "apps", "frontend", "feature-x", "src", "test.spec.ts"),
@@ -153,7 +167,8 @@ describe("FileToProjectMapper", () => {
         dependencies: {},
       };
 
-      const mapper = new FileToProjectMapper();
+      setupContainer(tmpDir, graph);
+      const mapper = Container.get(FileToProjectMapper);
 
       // With the fallback to file-system discovery, the file is now mapped
       // to the workspace root as a synthetic project instead of throwing
@@ -171,7 +186,8 @@ describe("FileToProjectMapper", () => {
       writeFile(tmpDir, "src/app.spec.ts", "// test");
 
       // No Nx config — empty graph
-      const mapper = new FileToProjectMapper();
+      setupContainer(tmpDir, {nodes: {}, dependencies: {}});
+      const mapper = Container.get(FileToProjectMapper);
 
       const projects = await mapper.mapFileToProjects(path.join(tmpDir, "src", "app.spec.ts"));
 
@@ -183,7 +199,8 @@ describe("FileToProjectMapper", () => {
       writeFile(tmpDir, "vitest.config.ts", "export default {}");
       writeFile(tmpDir, "src/deep/nested/test.spec.ts", "// test");
 
-      const mapper = new FileToProjectMapper();
+      setupContainer(tmpDir, {nodes: {}, dependencies: {}});
+      const mapper = Container.get(FileToProjectMapper);
 
       const projects = await mapper.mapFileToProjects(path.join(tmpDir, "src", "deep", "nested", "test.spec.ts"));
 
@@ -194,7 +211,8 @@ describe("FileToProjectMapper", () => {
       writeFile(tmpDir, "package.json", JSON.stringify({name: "neutral-project"}));
       writeFile(tmpDir, "src/test.spec.ts", "// test");
 
-      const mapper = new FileToProjectMapper();
+      setupContainer(tmpDir, {nodes: {}, dependencies: {}});
+      const mapper = Container.get(FileToProjectMapper);
 
       const projects = await mapper.mapFileToProjects(path.join(tmpDir, "src", "test.spec.ts"));
 
@@ -240,7 +258,8 @@ describe("FileToProjectMapper", () => {
       writeFile(tmpDir, "apps/frontend/src/b.spec.ts", "// test");
       writeFile(tmpDir, "libs/shared/src/c.spec.ts", "// test");
 
-      const mapper = new FileToProjectMapper();
+      setupContainer(tmpDir, graph);
+      const mapper = Container.get(FileToProjectMapper);
 
       const affected = await mapper.getAffectedProjects([
         path.join(tmpDir, "apps", "frontend", "src", "a.spec.ts"),

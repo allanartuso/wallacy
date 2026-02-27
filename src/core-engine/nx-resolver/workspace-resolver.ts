@@ -84,10 +84,35 @@ export class NxWorkspaceResolver {
   private cachedGraph: NxProjectGraph | null = null;
   private cachedProjects: Map<string, NxProjectInfo> = new Map();
   private cacheTimestamp = 0;
-  private readonly devkit: NxDevkitBridge = createDefaultDevkitBridge();
+  private devkit: NxDevkitBridge = createDefaultDevkitBridge();
   private readonly cacheTtlMs: number = 30_000;
 
+  /** Explicitly set workspace root — used by tests and headless callers. */
+  private overrideWorkspaceRoot: string | null = null;
+
+  /**
+   * Explicitly set the workspace root.
+   * When set, getWorkspaceRoot() returns this value directly
+   * without querying VS Code's active editor.
+   */
+  setWorkspaceRoot(root: string): void {
+    this.overrideWorkspaceRoot = root;
+  }
+
+  /**
+   * Override the Nx devkit bridge (for testing with mock project graphs).
+   */
+  setDevkitBridge(bridge: NxDevkitBridge): void {
+    this.devkit = bridge;
+    this.invalidateCache();
+  }
+
   getWorkspaceRoot(): string {
+    // If an explicit root was set (tests / headless mode), use it directly
+    if (this.overrideWorkspaceRoot) {
+      return this.overrideWorkspaceRoot;
+    }
+
     const editor = this.vsCodeService.activeTextEditor;
     if (!editor) {
       this.vsCodeService.showErrorMessage("No active editor found");

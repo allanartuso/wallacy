@@ -44,6 +44,18 @@ function createMockBridge(graph: NxProjectGraph): NxDevkitBridge {
   };
 }
 
+/**
+ * Set up the DI container with a workspace resolver that uses the given
+ * tmpDir as workspace root and the provided Nx project graph.
+ */
+function setupContainer(tmpDir: string, graph: NxProjectGraph): void {
+  const resolver = new NxWorkspaceResolver();
+  resolver.setWorkspaceRoot(tmpDir);
+  resolver.setDevkitBridge(createMockBridge(graph));
+  Container.set(NxWorkspaceResolver, resolver);
+  Container.set(FileToProjectMapper, new FileToProjectMapper());
+}
+
 // ─── Tests ──────────────────────────────────────────────────
 
 describe("SmartStartResolver", () => {
@@ -128,8 +140,7 @@ describe("SmartStartResolver", () => {
       };
 
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
+      setupContainer(tmpDir, graph);
       const resolver = new SmartStartResolver();
 
       const result = await resolver.resolve(testFile, false);
@@ -138,8 +149,8 @@ describe("SmartStartResolver", () => {
       expect(result.testFramework).toBe("vitest");
       expect(result.configPath).toBe(path.join(tmpDir, "apps", "frontend", "vitest.config.ts"));
       expect(result.tsconfigPath).toBe(path.join(tmpDir, "apps", "frontend", "tsconfig.json"));
-      expect(result.pathAliases["@myorg/shared"]).toEqual(["libs/shared/src/index.ts"]);
-      expect(result.pathAliases["@myorg/shared/*"]).toEqual(["libs/shared/src/*"]);
+      expect(result.pathAliases["@myorg/shared"]).toEqual([path.join(tmpDir, "libs/shared/src/index.ts")]);
+      expect(result.pathAliases["@myorg/shared/*"]).toEqual([path.join(tmpDir, "libs/shared/src/*")]);
     });
 
     it("should compute transitive dependents", async () => {
@@ -191,8 +202,7 @@ describe("SmartStartResolver", () => {
       };
 
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
+      setupContainer(tmpDir, graph);
       const resolver = new SmartStartResolver();
 
       const result = await resolver.resolve(testFile, true);
@@ -237,8 +247,7 @@ describe("SmartStartResolver", () => {
       };
 
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
+      setupContainer(tmpDir, graph);
       const resolver = new SmartStartResolver();
 
       const result = await resolver.resolve(testFile, false);
@@ -278,8 +287,7 @@ describe("SmartStartResolver", () => {
 
       // Empty Nx graph (not an Nx workspace)
       const bridge = createMockBridge({nodes: {}, dependencies: {}});
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
+      setupContainer(tmpDir, {nodes: {}, dependencies: {}});
       const resolver = new SmartStartResolver();
 
       const result = await resolver.resolve(testFile, false);
@@ -287,7 +295,7 @@ describe("SmartStartResolver", () => {
       expect(result.testFramework).toBe("vitest");
       expect(result.configPath).toBe(path.join(tmpDir, "vitest.config.ts"));
       expect(result.tsconfigPath).toBe(path.join(tmpDir, "tsconfig.json"));
-      expect(result.pathAliases["@/*"]).toEqual(["src/*"]);
+      expect(result.pathAliases["@/*"]).toEqual([path.join(tmpDir, "src/*")]);
     });
 
     it("should resolve a standalone jest project", async () => {
@@ -304,8 +312,7 @@ describe("SmartStartResolver", () => {
       const testFile = writeFile(tmpDir, "src/app.test.ts", "// test");
 
       const bridge = createMockBridge({nodes: {}, dependencies: {}});
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
+      setupContainer(tmpDir, {nodes: {}, dependencies: {}});
       const resolver = new SmartStartResolver();
 
       const result = await resolver.resolve(testFile, false);
@@ -328,8 +335,7 @@ describe("SmartStartResolver", () => {
       const testFile = writeFile(tmpDir, "src/app.spec.ts", "// test");
 
       const bridge = createMockBridge({nodes: {}, dependencies: {}});
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
+      setupContainer(tmpDir, {nodes: {}, dependencies: {}});
       const resolver = new SmartStartResolver();
 
       const result = await resolver.resolve(testFile, false);
@@ -388,15 +394,14 @@ describe("SmartStartResolver", () => {
       };
 
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
+      setupContainer(tmpDir, graph);
       const resolver = new SmartStartResolver();
 
       const result = await resolver.resolve(testFile, false);
 
       expect(result.tsconfigPath).toBe(path.join(tmpDir, "libs", "core", "tsconfig.json"));
-      expect(result.pathAliases["@myorg/core"]).toEqual(["libs/core/src/index.ts"]);
-      expect(result.pathAliases["@myorg/core/*"]).toEqual(["libs/core/src/*"]);
+      expect(result.pathAliases["@myorg/core"]).toEqual([path.join(tmpDir, "libs/core/src/index.ts")]);
+      expect(result.pathAliases["@myorg/core/*"]).toEqual([path.join(tmpDir, "libs/core/src/*")]);
     });
   });
 
@@ -425,8 +430,7 @@ describe("SmartStartResolver", () => {
       };
 
       const bridge = createMockBridge(graph);
-      Container.set(NxWorkspaceResolver, new NxWorkspaceResolver());
-      Container.set(FileToProjectMapper, new FileToProjectMapper());
+      setupContainer(tmpDir, graph);
       const resolver = new SmartStartResolver();
 
       // With the fallback to file-system discovery, the file is resolved

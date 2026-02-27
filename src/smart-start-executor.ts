@@ -71,10 +71,13 @@ export class SmartStartExecutor {
    * @returns The complete result of the pipeline
    */
   async execute(filePath: string, callbacks?: SmartStartCallbacks): Promise<SmartStartExecuteResult> {
+    const log = (msg: string) => {
+      this.vsCodeService.appendLine(msg);
+      callbacks?.onLog?.(msg);
+    };
+
     const root = this.nxWorkspaceResolver.getWorkspaceRoot();
-    this.vsCodeService.appendLine(
-      `[SmartStartExecutor] Starting Smart Start for: ${root} => ${path.basename(filePath)}`,
-    );
+    log(`[SmartStartExecutor] Resolving: ${root} => ${path.basename(filePath)}`);
 
     // Step 1: Resolve everything
     let resolution: SmartStartResult;
@@ -85,7 +88,7 @@ export class SmartStartExecutor {
       throw error;
     }
 
-    this.vsCodeService.appendLine(
+    log(
       `[SmartStartExecutor] Resolved: ${resolution.project.name} ` +
         `(${resolution.testFramework}), config: ${resolution.configPath ?? "none"}`,
     );
@@ -100,9 +103,9 @@ export class SmartStartExecutor {
       : path.join(this.nxWorkspaceResolver.getWorkspaceRoot(), resolution.project.root);
 
     // Step 4: Discover tests
-    this.vsCodeService.appendLine(`[SmartStartExecutor] Discovering tests in: ${absoluteProjectRoot}`);
+    log(`[SmartStartExecutor] Discovering tests in: ${absoluteProjectRoot}`);
     const tests = await adapter.discoverTests(absoluteProjectRoot, resolution.configPath);
-    this.vsCodeService.appendLine(`[SmartStartExecutor] Discovered ${tests.length} test(s)`);
+    log(`[SmartStartExecutor] Discovered ${tests.length} test(s)`);
     callbacks?.onTestsDiscovered?.(tests);
 
     // Step 5: Set up lifecycle hooks for streaming
@@ -135,7 +138,7 @@ export class SmartStartExecutor {
       timeout: 30_000,
     };
 
-    this.vsCodeService.appendLine(`[SmartStartExecutor] Running tests...`);
+    log(`[SmartStartExecutor] Running tests...`);
     const executeResults = await adapter.executeTests([filePath], options);
 
     // Merge results from executeTests that weren't streamed via hooks
@@ -148,7 +151,7 @@ export class SmartStartExecutor {
 
     // Step 7: Collect final results
     const collected = await adapter.collectResults();
-    this.vsCodeService.appendLine(`[SmartStartExecutor] Run complete — ${allResults.length} result(s)`);
+    log(`[SmartStartExecutor] Run complete — ${allResults.length} result(s)`);
     callbacks?.onRunComplete?.(collected);
 
     // NOTE: We do NOT dispose the adapter here — it's kept alive for session reuse.
