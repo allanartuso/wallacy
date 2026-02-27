@@ -1,0 +1,35 @@
+.summary {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+  font-size: 13px;
+}
+
+.sum-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.si {
+  font-size: 14px;
+}
+
+.sum-pass .si {
+  color: var(--green);
+}
+
+.sum-fail .si {
+  color: var(--red);
+}
+
+.sum-skip .si {
+  color: var(--yellow);
+}
+
+.sum-time .si {
+  color: var(--muted);
+}

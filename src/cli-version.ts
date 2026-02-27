@@ -1,9 +1,9 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from "vscode";
-import { IPCClient } from "./ipc-client";
-import { SmartStartCommand } from "./smart-start-command";
-import { startCoreEngine } from "./core-engine";
+import {startCoreEngine} from "./core-engine";
+import {IPCClient} from "./ipc-client";
+import {SmartStartCommand} from "./smart-start-command";
 
 let ipcClient: IPCClient | null = null;
 let smartStartCommand: SmartStartCommand | null = null;
@@ -33,7 +33,7 @@ const engineInitializer = async (): Promise<number> => {
   try {
     // Dynamically require core-engine to avoid bundling it with the extension
 
-    const { port, cleanup } = await startCoreEngine(workspaceRoot);
+    const {port, cleanup} = await startCoreEngine(workspaceRoot);
     enginePort = port;
     engineCleanup = cleanup;
     outputChannel.appendLine(`[Extension] Core Engine started on port ${port}`);
@@ -43,13 +43,8 @@ const engineInitializer = async (): Promise<number> => {
   }
 };
 
-ipcClient = new IPCClient(outputChannel);
-smartStartCommand = new SmartStartCommand(
-  undefined,
-  ipcClient,
-  outputChannel,
-  engineInitializer,
-);
+ipcClient = new IPCClient();
+smartStartCommand = new SmartStartCommand();
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed

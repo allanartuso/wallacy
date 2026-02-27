@@ -1,0 +1,58 @@
+// Global styles for the VS Code webview
+// These use VS Code CSS variables for seamless theme integration.
+
+:root {
+  --bg: var(--vscode-editor-background);
+  --fg: var(--vscode-editor-foreground);
+  --border: var(--vscode-panel-border, var(--vscode-widget-border, #333));
+  --card: var(--vscode-editorWidget-background, var(--vscode-sideBar-background, #1e1e1e));
+  --hover: var(--vscode-list-hoverBackground, #2a2d2e);
+  --green: var(--vscode-testing-iconPassed, #73c991);
+  --red: var(--vscode-testing-iconFailed, #f14c4c);
+  --yellow: var(--vscode-testing-iconSkipped, #cca700);
+  --blue: var(--vscode-textLink-foreground, #3794ff);
+  --muted: var(--vscode-descriptionForeground, #888);
+  --diff-ins: var(--vscode-diffEditor-insertedTextBackground, rgba(115, 201, 145, 0.15));
+  --diff-del: var(--vscode-diffEditor-removedTextBackground, rgba(241, 76, 76, 0.15));
+  --mono: var(--vscode-editor-font-family, "Consolas", "Courier New", monospace);
+  --fs: var(--vscode-editor-font-size, 13px);
+  --r: 6px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, sans-serif);
+  font-size: var(--fs);
+  color: var(--fg);
+  background: var(--bg);
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+// Scrollbar styling for webview
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background, #424242);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground, #555);
+}
+
+// Shared utility classes
+.hidden {
+  display: none !important;
+}

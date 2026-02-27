@@ -1,0 +1,10 @@
+<app-header></app-header>
+<app-summary-bar></app-summary-bar>
+<app-tabs [activeTab]="activeTab" (tabChange)="onTabChange($event)"></app-tabs>
+
+@if (activeTab === "results") {
+  <app-results-pane></app-results-pane>
+}
+@if (activeTab === "console") {
+  <app-console-pane></app-console-pane>
+}

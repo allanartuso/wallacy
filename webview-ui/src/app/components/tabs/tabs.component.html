@@ -1,0 +1,10 @@
+<nav class="tabs">
+  <button class="tab" [class.active]="activeTab === 'results'" (click)="selectTab('results')">Results</button>
+  <button class="tab" [class.active]="activeTab === 'console'" (click)="selectTab('console')">
+    Console
+    @let count = (consoleCount$ | async) ?? 0;
+    @if (count > 0) {
+      <span class="tab-badge">{{ count }}</span>
+    }
+  </button>
+</nav>

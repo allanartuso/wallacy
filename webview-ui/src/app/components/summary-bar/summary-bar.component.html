@@ -1,0 +1,24 @@
+@if (visible$ | async) {
+  @let s = summary$ | async;
+  @if (s) {
+    <section class="summary">
+      <div class="sum-item sum-pass">
+        <span class="si">✓</span>
+        <b>{{ s.passed }}</b> passed
+      </div>
+      <div class="sum-item sum-fail">
+        <span class="si">✗</span>
+        <b>{{ s.failed }}</b> failed
+      </div>
+      <div class="sum-item sum-skip">
+        <span class="si">○</span>
+        <b>{{ s.skipped }}</b> skipped
+      </div>
+      <div class="sum-item sum-time">
+        <span class="si">⏱</span>
+        <b>{{ s.duration | number: "1.0-0" }}</b
+        >ms
+      </div>
+    </section>
+  }
+}

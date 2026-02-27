@@ -1,0 +1,47 @@
+:host {
+  display: block;
+  padding: 12px 16px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.console-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.con-entry {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 3px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.con-stdout {
+  color: var(--fg);
+}
+
+.con-stderr {
+  color: var(--red);
+  background: var(--diff-del);
+}
+
+.con-src {
+  color: var(--blue);
+  font-size: 11px;
+  cursor: pointer;
+  margin-right: 6px;
+}
+
+.con-src:hover {
+  text-decoration: underline;
+}
+
+.empty {
+  padding: 40px;
+  text-align: center;
+  color: var(--muted);
+}

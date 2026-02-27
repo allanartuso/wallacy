@@ -1,0 +1,16 @@
+@if (hasLogs$ | async) {
+  <div class="console-list">
+    @for (entry of consoleLogs$ | async; track entry.timestamp) {
+      <div [class]="getEntryClass(entry)">
+        @if (entry.file) {
+          <span class="con-src" (click)="openSource(entry)">{{ getSourceLabel(entry) }}</span>
+        }
+        <span class="con-content" [innerHTML]="getContentHtml(entry)"></span>
+      </div>
+    }
+  </div>
+} @else {
+  <div class="empty">
+    <p>No console output captured.</p>
+  </div>
+}

@@ -1,0 +1,220 @@
+.test-row {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r);
+  background: var(--card);
+  overflow: hidden;
+  border: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+
+.test-row:hover {
+  border-color: var(--border);
+}
+
+.tr-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.status-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.si-pass {
+  color: var(--green);
+  background: rgba(115, 201, 145, 0.1);
+}
+
+.si-fail {
+  color: var(--red);
+  background: rgba(241, 76, 76, 0.1);
+}
+
+.si-skip {
+  color: var(--yellow);
+  background: rgba(204, 167, 0, 0.1);
+}
+
+.test-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.test-suite {
+  color: var(--muted);
+  font-size: 12px;
+  margin-right: 4px;
+}
+
+.test-dur {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.test-link {
+  color: var(--blue);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.test-link:hover {
+  text-decoration: underline;
+}
+
+// Error details
+.test-error {
+  padding: 0 12px 12px;
+}
+
+.test-row:not(.expanded) .test-error {
+  display: none;
+}
+
+.err-msg {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 8px 12px;
+  background: var(--diff-del);
+  border-radius: var(--r);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 8px;
+  border-left: 3px solid var(--red);
+}
+
+.diff-box {
+  font-family: var(--mono);
+  font-size: 12px;
+  border-radius: var(--r);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+
+.diff-title {
+  padding: 6px 12px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.diff-cols {
+  display: flex;
+}
+
+.diff-col {
+  flex: 1;
+  padding: 8px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.diff-exp {
+  background: var(--diff-del);
+  border-right: 1px solid var(--border);
+}
+
+.diff-act {
+  background: var(--diff-ins);
+}
+
+.diff-lbl {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.diff-lbl-exp {
+  color: var(--red);
+}
+
+.diff-lbl-act {
+  color: var(--green);
+}
+
+// ANSI diff
+.ansi-diff {
+  padding: 8px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+:host ::ng-deep .ansi-diff .line {
+  display: block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin: 0 -6px;
+}
+
+:host ::ng-deep .ansi-diff .line-add {
+  background: var(--diff-ins);
+  color: var(--green);
+}
+
+:host ::ng-deep .ansi-diff .line-del {
+  background: var(--diff-del);
+  color: var(--red);
+}
+
+:host ::ng-deep .ansi-diff .line-hunk {
+  color: var(--blue);
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+:host ::ng-deep .ansi-diff .line-ctx {
+  opacity: 0.7;
+}
+
+// Stack trace
+.stack {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  padding: 8px 12px;
+  background: var(--card);
+  border-radius: var(--r);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+}
+
+:host ::ng-deep .stack-link {
+  color: var(--blue);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+:host ::ng-deep .stack-link:hover {
+  text-decoration: underline;
+}

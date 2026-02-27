@@ -1,0 +1,17 @@
+<header>
+  <div class="hdr-left">
+    <span class="logo">🧪</span>
+    <h1>Wallacy</h1>
+
+    @if (resolution$ | async; as res) {
+      <span class="badge">{{ res.projectName }}</span>
+      <span class="badge badge-fw">{{ res.testFramework }}</span>
+    }
+  </div>
+
+  <div class="hdr-right">
+    @if ((phase$ | async) === "complete") {
+      <button class="btn btn-primary" (click)="rerun()">▶ Re-run</button>
+    }
+  </div>
+</header>

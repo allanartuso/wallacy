@@ -1,0 +1,44 @@
+@if (phase$ | async; as phase) {
+  <!-- Spinner: shown during resolving/discovering/running when no results yet -->
+  @if ((phase === "resolving" || phase === "discovering" || phase === "running") && !(hasResults$ | async)) {
+    <div class="spinner-wrap">
+      <div class="spinner"></div>
+      <p>{{ spinnerText$ | async }}</p>
+    </div>
+  }
+
+  <!-- File groups with test rows -->
+  @if (hasResults$ | async) {
+    <div class="results-list">
+      @for (group of fileGroups$ | async; track group.file) {
+        <div class="file-group">
+          <div class="fg-header">
+            <span>📄</span>
+            <span class="fg-name" (click)="openFile(group.file)">{{ group.displayName }}</span>
+            <span class="fg-stats">
+              @if (group.passed) {
+                <span class="stat-pass">{{ group.passed }} ✓</span>
+              }
+              @if (group.failed) {
+                <span class="stat-fail">{{ group.failed }} ✗</span>
+              }
+              @if (group.skipped) {
+                <span class="stat-skip">{{ group.skipped }} ○</span>
+              }
+            </span>
+          </div>
+          @for (test of group.tests; track test.testId) {
+            <app-test-row [result]="test"></app-test-row>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  <!-- Empty state -->
+  @if (phase === "idle") {
+    <div class="empty">
+      <p>No test results yet. Run <strong>Wallacy: Smart Start</strong> on a test file.</p>
+    </div>
+  }
+}

@@ -4,6 +4,7 @@ import {ExtensionContext} from "vscode";
 import {IPCServer, startCoreEngine} from "./core-engine";
 import {SmartStartCommand} from "./smart-start-command";
 import {VsCodeService} from "./vs-code.service";
+import {TestResultsPanel} from "./webview";
 
 const vsCodeService = Container.get(VsCodeService);
 
@@ -34,6 +35,10 @@ const engineInitializer = async () => {
 export async function activate(context: ExtensionContext) {
   const outputChannel = vsCodeService.setupOutputChanel();
   context.subscriptions.push(outputChannel);
+
+  // Provide the extension URI to the webview panel so it can load Angular assets
+  const testResultsPanel = Container.get(TestResultsPanel);
+  testResultsPanel.setExtensionUri(context.extensionUri);
 
   vsCodeService.appendLine('Congratulations, your extension "wallacy" is now active!');
 
