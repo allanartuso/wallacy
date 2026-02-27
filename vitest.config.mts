@@ -1,3 +1,4 @@
+import path from "node:path";
 import {defineConfig} from "vitest/config";
 
 export default defineConfig({
@@ -6,5 +7,10 @@ export default defineConfig({
     setupFiles: ["src/integration-tests/setup.ts"],
     globals: true,
     testTimeout: 15000,
+  },
+  resolve: {
+    alias: {
+      vscode: path.resolve(__dirname, "src/integration-tests/__mocks__/vscode.ts"),
+    },
   },
 });
