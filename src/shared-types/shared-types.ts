@@ -197,6 +197,21 @@ export interface CollectedResults {
   duration: number;
 }
 
+// ─── Console Output ────────────────────────────────────────
+
+export interface ConsoleLogEntry {
+  /** Source of the log — 'stdout' or 'stderr' */
+  stream: "stdout" | "stderr";
+  /** The log content */
+  content: string;
+  /** File that produced the log (if known) */
+  file?: string;
+  /** Line number (if known) */
+  line?: number;
+  /** Timestamp */
+  timestamp: number;
+}
+
 export interface LifecycleHooks {
   onTestStart?: (testId: string) => void;
   onTestEnd?: (result: TestResult) => void;
@@ -204,6 +219,7 @@ export interface LifecycleHooks {
   onSuiteEnd?: (suiteName: string) => void;
   onFileStart?: (filePath: string) => void;
   onFileEnd?: (filePath: string) => void;
+  onConsoleLog?: (entry: ConsoleLogEntry) => void;
 }
 
 export interface TestFrameworkAdapter {

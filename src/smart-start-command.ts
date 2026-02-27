@@ -2,11 +2,12 @@ import * as path from "path";
 import Container, {Service} from "typedi";
 import {FileSystemWatcher} from "vscode";
 import {IPCClient} from "./ipc-client";
-import type {SmartStartResult} from "./shared-types";
+import type {SmartStartResult, TestResult} from "./shared-types";
 import {SmartStartCallbacks, SmartStartExecutor} from "./smart-start-executor";
 import {SmartStartSession} from "./smart-start-session";
 import {isTestFile} from "./test-utils";
 import {VsCodeService} from "./vs-code.service";
+import {TestResultsPanel} from "./webview";
 
 @Service()
 export class SmartStartCommand {
@@ -14,6 +15,7 @@ export class SmartStartCommand {
   private readonly iPCClient = Container.get(IPCClient);
   private readonly smartStartSession = Container.get(SmartStartSession);
   private readonly smartStartExecutor = Container.get(SmartStartExecutor);
+  private readonly testResultsPanel = Container.get(TestResultsPanel);
 
   private pendingSmartStartFile: string | null = null;
   private fileWatcher: FileSystemWatcher | null = null;
@@ -50,7 +52,6 @@ export class SmartStartCommand {
   }
 
   async execute() {
-    this.vsCodeService.showInformationMessage("Hello smartStartCommand!");
     this.vsCodeService.appendLine("[Extension] Smart Start initiated");
 
     if (this.disposed) {
@@ -86,25 +87,38 @@ export class SmartStartCommand {
 
     this.smartStartSession.setWorkspaceRoot(this.workspaceRoot);
 
+    // ─── Open the test results panel and wire up re-run ────
+    this.testResultsPanel.createOrShow();
+    this.testResultsPanel.notifyRunStarted(filePath);
+    this.testResultsPanel.onRerunRequested = () => {
+      this.vsCodeService.appendLine("[Extension] Re-run requested from panel");
+      this.execute();
+    };
+
     // ─── Drive the full resolution → execution pipeline ────
     this.pendingSmartStartFile = filePath;
-
-    // Configure DI container with the workspace root, then resolve the executor
 
     this.vsCodeService.appendLine(`[Extension] Resolving project and framework for: ${path.basename(filePath)}`);
 
     const callbacks: SmartStartCallbacks = {
       onResolved: (result) => {
         this.handleSmartStartResponse(result);
+        this.testResultsPanel.notifyResolution(result);
       },
       onTestsDiscovered: (tests) => {
         this.handleTestDiscovery(tests);
+        this.testResultsPanel.notifyTestsDiscovered(tests);
       },
-      onTestResult: (result) => {
+      onTestResult: (result: TestResult) => {
         this.handleTestResult(result);
+        this.testResultsPanel.notifyTestResult(result);
       },
       onRunComplete: (collected) => {
         this.handleTestRunComplete(collected);
+        this.testResultsPanel.notifyRunComplete(collected);
+      },
+      onConsoleLog: (entry) => {
+        this.testResultsPanel.notifyConsoleLog(entry);
       },
       onError: (error) => {
         this.handleEngineError({message: error.message});
@@ -239,6 +253,7 @@ export class SmartStartCommand {
     }
     this.iPCClient.disconnect();
     this.smartStartSession.clearSession();
+    this.testResultsPanel.dispose();
 
     this.vsCodeService.appendLine("[Extension] SmartStartCommand disposed");
   }

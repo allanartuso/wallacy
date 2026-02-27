@@ -5,6 +5,7 @@ import {pathToFileURL} from "node:url";
 import Container from "typedi";
 import type {
   CollectedResults,
+  ConsoleLogEntry,
   ExecutionOptions,
   LifecycleHooks,
   TestFrameworkAdapter,
@@ -114,6 +115,11 @@ export class VitestAdapter implements TestFrameworkAdapter {
         watch: false,
         reporters: ["default"],
         passWithNoTests: true,
+        // Capture console logs via Vitest's onConsoleLog hook
+        onConsoleLog: (log: string, type: "stdout" | "stderr") => {
+          const entry = this.parseConsoleLog(log, type);
+          this.hooks?.onConsoleLog?.(entry);
+        },
       };
 
       // Only override the `include` glob when there's NO config file.
@@ -363,6 +369,43 @@ export class VitestAdapter implements TestFrameworkAdapter {
     }
 
     return aliases;
+  }
+
+  /**
+   * Parse a raw console log string from Vitest into a ConsoleLogEntry.
+   * Vitest prepends "stdout | file.ts" or "stderr | file.ts" in some cases.
+   * We attempt to extract file/line information from the content.
+   */
+  private parseConsoleLog(log: string, stream: "stdout" | "stderr"): ConsoleLogEntry {
+    let file: string | undefined;
+    let line: number | undefined;
+    let content = log;
+
+    // Try to extract file info from vitest's console log format
+    // Vitest logs look like: "stdout | src/file.ts > suite > test"
+    const headerMatch = log.match(/^(stdout|stderr)\s+\|\s+(.+?)(?:\s*>\s*.+)?\n([\s\S]*)$/);
+    if (headerMatch) {
+      file = headerMatch[2].trim();
+      content = headerMatch[3] || log;
+    }
+
+    // Also try to find source location from a stack-like pattern in content
+    // e.g. "at Object.<anonymous> (src/file.ts:42:15)"
+    if (!file) {
+      const stackMatch = content.match(/(?:at\s+.*?\(|❯\s*|at\s+)([A-Za-z]:[\\/].*?|\/.*?):(\d+)/);
+      if (stackMatch) {
+        file = stackMatch[1];
+        line = parseInt(stackMatch[2], 10);
+      }
+    }
+
+    return {
+      stream,
+      content: content.trimEnd(),
+      file,
+      line,
+      timestamp: Date.now(),
+    };
   }
 
   private normalizePath(p: string): string {

@@ -17,6 +17,7 @@ import {NxWorkspaceResolver} from "./core-engine/nx-resolver/workspace-resolver"
 import {SmartStartResolver} from "./core-engine/smart-start/smart-start-resolver";
 import type {
   CollectedResults,
+  ConsoleLogEntry,
   ExecutionOptions,
   LifecycleHooks,
   SmartStartResult,
@@ -34,6 +35,7 @@ export interface SmartStartCallbacks {
   onTestsDiscovered?: (tests: TestInfo[]) => void;
   onTestResult?: (result: TestResult) => void;
   onRunComplete?: (results: CollectedResults) => void;
+  onConsoleLog?: (entry: ConsoleLogEntry) => void;
   onError?: (error: Error) => void;
   onLog?: (message: string) => void;
 }
@@ -101,6 +103,9 @@ export class SmartStartExecutor {
       onTestEnd: (result) => {
         allResults.push(result);
         callbacks?.onTestResult?.(result);
+      },
+      onConsoleLog: (entry) => {
+        callbacks?.onConsoleLog?.(entry);
       },
     };
     adapter.hookIntoLifecycle(hooks);
