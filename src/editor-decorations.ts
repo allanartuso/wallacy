@@ -20,6 +20,19 @@ import { Service } from 'typedi';
 import * as vscode from 'vscode';
 import type { ConsoleLogEntry, TestResult } from './shared-types';
 
+// ---- ANSI stripping ----
+
+/** Strip all ANSI escape sequences from a string. */
+function stripAnsi(s: string): string {
+  if (!s) {
+    return '';
+  }
+  // Covers SGR (\x1b[…m), CSI sequences, and OSC sequences
+  return s
+    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+    .replace(/\x1b\][^\x07]*\x07/g, '');
+}
+
 // ---- Decoration type factory ----
 
 function createGutterDecorationType(
@@ -278,28 +291,34 @@ export class EditorDecorations {
         if (result.error) {
           hoverMessage.appendMarkdown('---\n\n');
           hoverMessage.appendMarkdown(
-            '**' + this.escapeMarkdown(result.error.message) + '**\n\n',
+            '**' +
+              this.escapeMarkdown(stripAnsi(result.error.message)) +
+              '**\n\n',
           );
           if (
             result.error.expected !== undefined &&
             result.error.actual !== undefined
           ) {
             hoverMessage.appendMarkdown(
-              '**Expected:** `' + String(result.error.expected) + '`\n\n',
+              '**Expected:** `' +
+                stripAnsi(String(result.error.expected)) +
+                '`\n\n',
             );
             hoverMessage.appendMarkdown(
-              '**Actual:** `' + String(result.error.actual) + '`\n\n',
+              '**Actual:** `' +
+                stripAnsi(String(result.error.actual)) +
+                '`\n\n',
             );
           }
           if (result.error.diff) {
             hoverMessage.appendMarkdown(
-              '```diff\n' + result.error.diff + '\n```\n',
+              '```diff\n' + stripAnsi(result.error.diff) + '\n```\n',
             );
           }
           if (result.error.stack) {
             hoverMessage.appendMarkdown(
               '<details><summary>Stack trace</summary>\n\n```\n' +
-                result.error.stack +
+                stripAnsi(result.error.stack) +
                 '\n```\n\n</details>\n',
             );
           }
@@ -319,24 +338,51 @@ export class EditorDecorations {
   // ---- Inline decorations (console logs + failure hints) ----
 
   private applyInlineDecorations(editor: vscode.TextEditor): void {
-    // Group console logs by line
+    // Separate logs that already have a known line from those that need line discovery
     const logsByLine = new Map<number, ConsoleLogEntry[]>();
+    const unplacedLogs: ConsoleLogEntry[] = [];
+
     for (const log of this.currentConsoleLogs) {
-      if (log.line === undefined || log.line < 1) {
-        continue;
-      }
+      // Skip logs from a different file
       if (log.file && !this.isSameFile(log.file, this.currentFile!)) {
         continue;
       }
 
-      const existing = logsByLine.get(log.line) ?? [];
-      existing.push(log);
-      logsByLine.set(log.line, existing);
+      if (log.line !== undefined && log.line >= 1) {
+        const existing = logsByLine.get(log.line) ?? [];
+        existing.push(log);
+        logsByLine.set(log.line, existing);
+      } else {
+        unplacedLogs.push(log);
+      }
+    }
+
+    // For logs without a known line, scan the document for `console.log(`
+    // (or console.warn, console.error, etc.) and assign in order.
+    if (unplacedLogs.length > 0) {
+      const doc = editor.document;
+      const consoleCallLines: number[] = [];
+      for (let i = 0; i < doc.lineCount; i++) {
+        const lineText = doc.lineAt(i).text;
+        if (/\bconsole\.(log|warn|error|info|debug)\s*\(/.test(lineText)) {
+          consoleCallLines.push(i + 1); // 1-based
+        }
+      }
+
+      // Match unplaced logs to console call lines in order
+      for (let i = 0; i < unplacedLogs.length; i++) {
+        const line = consoleCallLines[i];
+        if (line !== undefined) {
+          const existing = logsByLine.get(line) ?? [];
+          existing.push(unplacedLogs[i]);
+          logsByLine.set(line, existing);
+        }
+      }
     }
 
     // Create inline decorations for console logs
     for (const [line, logs] of logsByLine) {
-      const firstContent = logs[0].content.split('\n')[0];
+      const firstContent = stripAnsi(logs[0].content.split('\n')[0]);
       const truncated =
         firstContent.length > 60
           ? firstContent.slice(0, 57) + '...'
@@ -359,7 +405,7 @@ export class EditorDecorations {
       for (const log of logs) {
         const streamLabel = log.stream === 'stderr' ? 'stderr' : 'stdout';
         hover.appendMarkdown('`' + streamLabel + '`\n\n');
-        hover.appendMarkdown('```\n' + log.content + '\n```\n\n');
+        hover.appendMarkdown('```\n' + stripAnsi(log.content) + '\n```\n\n');
       }
 
       const decorationType = vscode.window.createTextEditorDecorationType({
@@ -386,14 +432,26 @@ export class EditorDecorations {
       if (result.status !== 'failed') {
         continue;
       }
-      if (!result.error || result.line === undefined || result.line < 1) {
+      if (!result.error) {
         continue;
       }
       if (!this.isSameFile(result.file, this.currentFile!)) {
         continue;
       }
 
-      const firstLine = result.error.message.split('\n')[0];
+      // Prefer the assertion failure line (expect) from the stack trace,
+      // falling back to the test definition line.
+      const assertionLine = this.parseErrorLine(
+        result.error.stack,
+        this.currentFile!,
+      );
+      const targetLine = assertionLine ?? result.line;
+      if (targetLine === undefined || targetLine < 1) {
+        continue;
+      }
+
+      const cleanMessage = stripAnsi(result.error.message);
+      const firstLine = cleanMessage.split('\n')[0];
       const truncated =
         firstLine.length > 80 ? firstLine.slice(0, 77) + '...' : firstLine;
 
@@ -401,27 +459,29 @@ export class EditorDecorations {
       hover.isTrusted = true;
       hover.supportHtml = true;
       hover.appendMarkdown('**Test Failure**\n\n');
-      hover.appendMarkdown(
-        '**' + this.escapeMarkdown(result.error.message) + '**\n\n',
-      );
+      hover.appendMarkdown('**' + this.escapeMarkdown(cleanMessage) + '**\n\n');
       if (
         result.error.expected !== undefined &&
         result.error.actual !== undefined
       ) {
         hover.appendMarkdown(
-          '**Expected:** `' + String(result.error.expected) + '`\n\n',
+          '**Expected:** `' +
+            stripAnsi(String(result.error.expected)) +
+            '`\n\n',
         );
         hover.appendMarkdown(
-          '**Actual:** `' + String(result.error.actual) + '`\n\n',
+          '**Actual:** `' + stripAnsi(String(result.error.actual)) + '`\n\n',
         );
       }
       if (result.error.diff) {
-        hover.appendMarkdown('```diff\n' + result.error.diff + '\n```\n');
+        hover.appendMarkdown(
+          '```diff\n' + stripAnsi(result.error.diff) + '\n```\n',
+        );
       }
       if (result.error.stack) {
         hover.appendMarkdown(
           '<details><summary>Stack trace</summary>\n\n```\n' +
-            result.error.stack +
+            stripAnsi(result.error.stack) +
             '\n```\n\n</details>\n',
         );
       }
@@ -436,9 +496,9 @@ export class EditorDecorations {
       });
 
       const range = new vscode.Range(
-        result.line - 1,
+        targetLine - 1,
         Number.MAX_SAFE_INTEGER,
-        result.line - 1,
+        targetLine - 1,
         Number.MAX_SAFE_INTEGER,
       );
       editor.setDecorations(decorationType, [{ range, hoverMessage: hover }]);
@@ -501,13 +561,13 @@ export class EditorDecorations {
       }
 
       const message =
-        result.error.message +
+        stripAnsi(result.error.message) +
         (result.error.expected !== undefined &&
         result.error.actual !== undefined
           ? '\nExpected: ' +
-            String(result.error.expected) +
+            stripAnsi(String(result.error.expected)) +
             '\nActual: ' +
-            String(result.error.actual)
+            stripAnsi(String(result.error.actual))
           : '');
 
       const diagnostic = new vscode.Diagnostic(

@@ -6,10 +6,10 @@
  * Communication uses the official VS Code `postMessage` API.
  */
 
-import * as fs from "fs";
-import * as path from "path";
-import {Service} from "typedi";
-import * as vscode from "vscode";
+import * as fs from 'fs';
+import * as path from 'path';
+import { Service } from 'typedi';
+import * as vscode from 'vscode';
 import type {
   CollectedResults,
   ConsoleLogEntry,
@@ -18,10 +18,13 @@ import type {
   TestInfo,
   TestResult,
   WebviewToExtensionMessage,
-} from "../shared-types";
+} from '../shared-types';
 
 // Re-export message types for backward compatibility
-export type {WebviewToExtensionMessage as WebviewIncomingMessage, ExtensionToWebviewMessage as WebviewMessage};
+export type {
+  WebviewToExtensionMessage as WebviewIncomingMessage,
+  ExtensionToWebviewMessage as WebviewMessage,
+};
 
 @Service()
 export class TestResultsPanel {
@@ -55,15 +58,22 @@ export class TestResultsPanel {
     }
 
     if (!this.extensionUri) {
-      throw new Error("TestResultsPanel: extensionUri not set. Call setExtensionUri() first.");
+      throw new Error(
+        'TestResultsPanel: extensionUri not set. Call setExtensionUri() first.',
+      );
     }
 
-    const webviewDistPath = vscode.Uri.joinPath(this.extensionUri, "dist", "webview-ui", "browser");
+    const webviewDistPath = vscode.Uri.joinPath(
+      this.extensionUri,
+      'dist',
+      'webview-ui',
+      'browser',
+    );
 
     this.panel = vscode.window.createWebviewPanel(
-      "wallacy.testResults",
-      "Wallacy \u2014 Test Results",
-      {viewColumn: vscode.ViewColumn.Beside, preserveFocus: true},
+      'wallacy.testResults',
+      'Wallacy \u2014 Test Results',
+      { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
       {
         enableScripts: true,
         retainContextWhenHidden: true,
@@ -71,22 +81,25 @@ export class TestResultsPanel {
       },
     );
 
-    this.panel.iconPath = new vscode.ThemeIcon("beaker");
-    this.panel.webview.html = this.getHtmlForWebview(this.panel.webview, webviewDistPath);
+    this.panel.iconPath = new vscode.ThemeIcon('beaker');
+    this.panel.webview.html = this.getHtmlForWebview(
+      this.panel.webview,
+      webviewDistPath,
+    );
     this.webviewReady = false;
 
     this.panel.webview.onDidReceiveMessage(
       (msg: WebviewToExtensionMessage) => {
         switch (msg.type) {
-          case "openFile":
+          case 'openFile':
             this.handleOpenFile(msg.file, msg.line);
             break;
-          case "rerun":
+          case 'rerun':
             if (this.lastRunFile) {
               this.onRerunRequested?.(this.lastRunFile);
             }
             break;
-          case "ready":
+          case 'ready':
             this.webviewReady = true;
             this.flushPendingMessages();
             break;
@@ -122,12 +135,15 @@ export class TestResultsPanel {
 
   notifyRunStarted(file: string): void {
     this.lastRunFile = file;
-    this.postMessage({type: "runStarted", data: {file, timestamp: Date.now()}});
+    this.postMessage({
+      type: 'runStarted',
+      data: { file, timestamp: Date.now() },
+    });
   }
 
   notifyResolution(result: SmartStartResult): void {
     this.postMessage({
-      type: "resolution",
+      type: 'resolution',
       data: {
         projectName: result.project.name,
         projectRoot: result.project.root,
@@ -140,20 +156,32 @@ export class TestResultsPanel {
   }
 
   notifyTestsDiscovered(tests: TestInfo[]): void {
-    this.postMessage({type: "testsDiscovered", data: tests});
+    this.postMessage({ type: 'testsDiscovered', data: tests });
   }
 
   notifyTestResult(result: TestResult): void {
-    this.postMessage({type: "testResult", data: result});
+    this.postMessage({ type: 'testResult', data: result });
   }
 
   notifyRunComplete(collected: CollectedResults): void {
-    const passed = collected.results.filter((r) => r.status === "passed").length;
-    const failed = collected.results.filter((r) => r.status === "failed").length;
-    const skipped = collected.results.filter((r) => r.status === "skipped").length;
+    const passed = collected.results.filter(
+      (r) => r.status === 'passed',
+    ).length;
+    const failed = collected.results.filter(
+      (r) => r.status === 'failed',
+    ).length;
+    const skipped = collected.results.filter(
+      (r) => r.status === 'skipped',
+    ).length;
     this.postMessage({
-      type: "runComplete",
-      data: {results: collected.results, duration: collected.duration, passed, failed, skipped},
+      type: 'runComplete',
+      data: {
+        results: collected.results,
+        duration: collected.duration,
+        passed,
+        failed,
+        skipped,
+      },
     });
   }
 
@@ -161,16 +189,41 @@ export class TestResultsPanel {
     // Sanitize the entry to avoid circular references from Vitest task objects
     const safeEntry: ConsoleLogEntry = {
       stream: entry.stream,
-      content: typeof entry.content === "string" ? entry.content : String(entry.content),
-      file: typeof entry.file === "string" ? entry.file : undefined,
-      line: typeof entry.line === "number" ? entry.line : undefined,
+      content:
+        typeof entry.content === 'string'
+          ? entry.content
+          : String(entry.content),
+      file: typeof entry.file === 'string' ? entry.file : undefined,
+      line: typeof entry.line === 'number' ? entry.line : undefined,
       timestamp: entry.timestamp,
     };
-    this.postMessage({type: "consoleLog", data: safeEntry});
+    this.postMessage({ type: 'consoleLog', data: safeEntry });
   }
 
-  notifyCachedResult(file: string, cachedAt: number, contentHash: string): void {
-    this.postMessage({type: "cachedResult", data: {file, cachedAt, contentHash}});
+  /**
+   * Send an updated/enriched array of console logs to replace the webview's current state.
+   * Called after post-run enrichment (e.g. assigning line numbers).
+   */
+  notifyConsoleLogsUpdate(entries: ConsoleLogEntry[]): void {
+    const safe = entries.map((e) => ({
+      stream: e.stream,
+      content: typeof e.content === 'string' ? e.content : String(e.content),
+      file: typeof e.file === 'string' ? e.file : undefined,
+      line: typeof e.line === 'number' ? e.line : undefined,
+      timestamp: e.timestamp,
+    }));
+    this.postMessage({ type: 'consoleLogsUpdate', data: safe });
+  }
+
+  notifyCachedResult(
+    file: string,
+    cachedAt: number,
+    contentHash: string,
+  ): void {
+    this.postMessage({
+      type: 'cachedResult',
+      data: { file, cachedAt, contentHash },
+    });
   }
 
   dispose(): void {
@@ -188,7 +241,10 @@ export class TestResultsPanel {
 
   private handleOpenFile(file: string, line?: number): void {
     const uri = vscode.Uri.file(file);
-    const opts: vscode.TextDocumentShowOptions = {viewColumn: vscode.ViewColumn.One, preserveFocus: false};
+    const opts: vscode.TextDocumentShowOptions = {
+      viewColumn: vscode.ViewColumn.One,
+      preserveFocus: false,
+    };
     if (line !== undefined && line > 0) {
       const pos = new vscode.Position(line - 1, 0);
       opts.selection = new vscode.Range(pos, pos);
@@ -203,32 +259,40 @@ export class TestResultsPanel {
    * (`<script src="...">`, `<link href="...">`) to use `webview.asWebviewUri()`
    * so the webview can load them.
    */
-  private getHtmlForWebview(webview: vscode.Webview, distUri: vscode.Uri): string {
-    const indexPath = path.join(distUri.fsPath, "index.html");
+  private getHtmlForWebview(
+    webview: vscode.Webview,
+    distUri: vscode.Uri,
+  ): string {
+    const indexPath = path.join(distUri.fsPath, 'index.html');
 
     if (!fs.existsSync(indexPath)) {
-      return this.getFallbackHtml("Angular webview not built. Run <code>npm run build:webview</code>.");
+      return this.getFallbackHtml(
+        'Angular webview not built. Run <code>npm run build:webview</code>.',
+      );
     }
 
-    let html = fs.readFileSync(indexPath, "utf-8");
+    let html = fs.readFileSync(indexPath, 'utf-8');
 
     // Remove <base href="/"> — it breaks asset resolution in webview context
-    html = html.replace(/<base\s+href="[^"]*"\s*\/?>/i, "");
+    html = html.replace(/<base\s+href="[^"]*"\s*\/?>/i, '');
 
     // Remove onload inline handlers — CSP blocks them, and the stylesheet
     // would stay at media="print" forever. Switch it to media="all" directly.
     html = html.replace(/\s*media="print"\s*onload="[^"]*"/g, ' media="all"');
 
     // Rewrite src="xxx" and href="xxx" to webview URIs (skip http/https/data and empty)
-    html = html.replace(/(src|href)="(?!https?:|data:)([^"]+)"/g, (_match, attr, file) => {
-      // Strip leading "./" or "/"
-      const clean = file.replace(/^\.?\//, "");
-      if (!clean) {
-        return `${attr}="${file}"`;
-      }
-      const fileUri = vscode.Uri.joinPath(distUri, clean);
-      return `${attr}="${webview.asWebviewUri(fileUri)}"`;
-    });
+    html = html.replace(
+      /(src|href)="(?!https?:|data:)([^"]+)"/g,
+      (_match, attr, file) => {
+        // Strip leading "./" or "/"
+        const clean = file.replace(/^\.?\//, '');
+        if (!clean) {
+          return `${attr}="${file}"`;
+        }
+        const fileUri = vscode.Uri.joinPath(distUri, clean);
+        return `${attr}="${webview.asWebviewUri(fileUri)}"`;
+      },
+    );
 
     // Inject CSP meta tag just after <head> for security
     const csp = [
@@ -237,7 +301,7 @@ export class TestResultsPanel {
       `script-src ${webview.cspSource} 'wasm-unsafe-eval'`,
       `font-src ${webview.cspSource}`,
       `img-src ${webview.cspSource} data:`,
-    ].join("; ");
+    ].join('; ');
 
     html = html.replace(
       /<head(\s[^>]*)?>/i,

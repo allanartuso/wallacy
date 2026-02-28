@@ -10,7 +10,7 @@
  * with webview panels — NOT websockets or HTTP.
  */
 
-import type {ConsoleLogEntry, TestInfo, TestResult} from "./shared-types";
+import type { ConsoleLogEntry, TestInfo, TestResult } from './shared-types';
 
 // ─── Extension → Webview ────────────────────────────────────
 
@@ -32,18 +32,22 @@ export interface RunCompletePayload {
 }
 
 export type ExtensionToWebviewMessage =
-  | {type: "clear"}
-  | {type: "resolution"; data: ResolutionPayload}
-  | {type: "testsDiscovered"; data: TestInfo[]}
-  | {type: "testResult"; data: TestResult}
-  | {type: "runComplete"; data: RunCompletePayload}
-  | {type: "consoleLog"; data: ConsoleLogEntry}
-  | {type: "runStarted"; data: {file: string; timestamp: number}}
-  | {type: "cachedResult"; data: {file: string; cachedAt: number; contentHash: string}};
+  | { type: 'clear' }
+  | { type: 'resolution'; data: ResolutionPayload }
+  | { type: 'testsDiscovered'; data: TestInfo[] }
+  | { type: 'testResult'; data: TestResult }
+  | { type: 'runComplete'; data: RunCompletePayload }
+  | { type: 'consoleLog'; data: ConsoleLogEntry }
+  | { type: 'consoleLogsUpdate'; data: ConsoleLogEntry[] }
+  | { type: 'runStarted'; data: { file: string; timestamp: number } }
+  | {
+      type: 'cachedResult';
+      data: { file: string; cachedAt: number; contentHash: string };
+    };
 
 // ─── Webview → Extension ────────────────────────────────────
 
 export type WebviewToExtensionMessage =
-  | {type: "openFile"; file: string; line?: number}
-  | {type: "rerun"}
-  | {type: "ready"};
+  | { type: 'openFile'; file: string; line?: number }
+  | { type: 'rerun' }
+  | { type: 'ready' };

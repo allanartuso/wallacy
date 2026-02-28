@@ -143,6 +143,11 @@ export class TestStateService {
         break;
       }
 
+      case 'consoleLogsUpdate':
+        // Replace entire console log array (enriched with line numbers after run)
+        this.consoleLogsSubject.next(msg.data);
+        break;
+
       case 'cachedResult':
         this.cachedResultSubject.next(msg.data);
         break;

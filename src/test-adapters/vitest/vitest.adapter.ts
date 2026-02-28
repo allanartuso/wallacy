@@ -15,6 +15,16 @@ import type {
 } from '../../shared-types';
 import { VsCodeService } from '../../vs-code.service';
 
+/** Strip all ANSI escape sequences from a string. */
+function stripAnsi(s: string): string {
+  if (!s) {
+    return '';
+  }
+  return s
+    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+    .replace(/\x1b\][^\x07]*\x07/g, '');
+}
+
 export class VitestAdapter implements TestFrameworkAdapter {
   private readonly vsCodeService = Container.get(VsCodeService);
 
@@ -324,11 +334,11 @@ export class VitestAdapter implements TestFrameworkAdapter {
     if (result?.errors && result.errors.length > 0) {
       const firstError = result.errors[0];
       error = {
-        message: firstError.message ?? String(firstError),
-        stack: firstError.stack,
+        message: stripAnsi(firstError.message ?? String(firstError)),
+        stack: firstError.stack ? stripAnsi(firstError.stack) : undefined,
         expected: firstError.expected,
         actual: firstError.actual,
-        diff: firstError.diff,
+        diff: firstError.diff ? stripAnsi(firstError.diff) : undefined,
       };
     }
 

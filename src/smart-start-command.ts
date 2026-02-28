@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as path from 'path';
 import Container, { Service } from 'typedi';
 import * as vscode from 'vscode';
@@ -219,6 +220,13 @@ export class SmartStartCommand {
         executeResult.collected,
         consoleLogs,
       );
+
+      // ─── Enrich console logs with line numbers ─────────
+      if (consoleLogs.length > 0) {
+        this.enrichConsoleLogLines(filePath, consoleLogs);
+        // Send enriched logs to webview (replaces the unenriched ones)
+        this.testResultsPanel.notifyConsoleLogsUpdate(consoleLogs);
+      }
 
       // ─── Apply editor decorations (gutter + inline) ───
       this.editorDecorations.applyTestResults(
@@ -493,5 +501,64 @@ export class SmartStartCommand {
     if (!this.editorChangeDisposable) {
       this.setupEditorChangeListener();
     }
+  }
+
+  /**
+   * Enrich console log entries with line numbers by scanning the file for
+   * `console.log(` / `console.warn(` / etc. calls and assigning in order.
+   * This compensates for Vitest's `onConsoleLog` not providing source location.
+   */
+  private enrichConsoleLogLines(
+    filePath: string,
+    logs: ConsoleLogEntry[],
+  ): void {
+    // Only enrich logs that belong to this file and lack a line
+    const needEnrich = logs.filter(
+      (l) =>
+        l.line === undefined && (!l.file || this.isSameFile(l.file, filePath)),
+    );
+    if (needEnrich.length === 0) {
+      return;
+    }
+
+    let source: string;
+    try {
+      source = fs.readFileSync(filePath, 'utf-8');
+    } catch {
+      return;
+    }
+
+    const lines = source.split('\n');
+    const consoleCallLines: number[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (/\bconsole\.(log|warn|error|info|debug)\s*\(/.test(lines[i])) {
+        consoleCallLines.push(i + 1); // 1-based
+      }
+    }
+
+    for (let i = 0; i < needEnrich.length; i++) {
+      if (consoleCallLines[i] !== undefined) {
+        needEnrich[i].line = consoleCallLines[i];
+        // Ensure file is set so the webview can show the source label
+        if (!needEnrich[i].file) {
+          needEnrich[i].file = filePath;
+        }
+      }
+    }
+  }
+
+  private isSameFile(a: string, b: string): boolean {
+    const na = path.normalize(a).replace(/\\/g, '/').toLowerCase();
+    const nb = path.normalize(b).replace(/\\/g, '/').toLowerCase();
+    if (na === nb) {
+      return true;
+    }
+    if (na.length > nb.length) {
+      return na.endsWith('/' + nb) || na.endsWith(nb);
+    }
+    if (nb.length > na.length) {
+      return nb.endsWith('/' + na) || nb.endsWith(na);
+    }
+    return false;
   }
 }

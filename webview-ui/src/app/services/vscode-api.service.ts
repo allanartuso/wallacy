@@ -15,8 +15,8 @@
  * components can subscribe to.
  */
 
-import {Injectable} from "@angular/core";
-import {Observable, Subject} from "rxjs";
+import { Injectable } from '@angular/core';
+import { Observable, Subject } from 'rxjs';
 
 // These types mirror the extension's shared-types/webview-messages.ts
 // We duplicate them here to avoid complex cross-project imports at build time.
@@ -54,7 +54,7 @@ export interface TestError {
   diff?: string;
 }
 
-export type TestStatus = "passed" | "failed" | "skipped" | "running";
+export type TestStatus = 'passed' | 'failed' | 'skipped' | 'running';
 
 export interface TestResult {
   testId: string;
@@ -68,7 +68,7 @@ export interface TestResult {
 }
 
 export interface ConsoleLogEntry {
-  stream: "stdout" | "stderr";
+  stream: 'stdout' | 'stderr';
   content: string;
   file?: string;
   line?: number;
@@ -76,16 +76,23 @@ export interface ConsoleLogEntry {
 }
 
 export type ExtensionMessage =
-  | {type: "clear"}
-  | {type: "resolution"; data: ResolutionPayload}
-  | {type: "testsDiscovered"; data: TestInfo[]}
-  | {type: "testResult"; data: TestResult}
-  | {type: "runComplete"; data: RunCompletePayload}
-  | {type: "consoleLog"; data: ConsoleLogEntry}
-  | {type: "runStarted"; data: {file: string; timestamp: number}}
-  | {type: "cachedResult"; data: {file: string; cachedAt: number; contentHash: string}};
+  | { type: 'clear' }
+  | { type: 'resolution'; data: ResolutionPayload }
+  | { type: 'testsDiscovered'; data: TestInfo[] }
+  | { type: 'testResult'; data: TestResult }
+  | { type: 'runComplete'; data: RunCompletePayload }
+  | { type: 'consoleLog'; data: ConsoleLogEntry }
+  | { type: 'consoleLogsUpdate'; data: ConsoleLogEntry[] }
+  | { type: 'runStarted'; data: { file: string; timestamp: number } }
+  | {
+      type: 'cachedResult';
+      data: { file: string; cachedAt: number; contentHash: string };
+    };
 
-export type WebviewMessage = {type: "openFile"; file: string; line?: number} | {type: "rerun"} | {type: "ready"};
+export type WebviewMessage =
+  | { type: 'openFile'; file: string; line?: number }
+  | { type: 'rerun' }
+  | { type: 'ready' };
 
 // VS Code API handle type
 interface VsCodeApi {
@@ -97,13 +104,14 @@ interface VsCodeApi {
 // Declare the global function injected by VS Code
 declare function acquireVsCodeApi(): VsCodeApi;
 
-@Injectable({providedIn: "root"})
+@Injectable({ providedIn: 'root' })
 export class VsCodeApiService {
   private readonly api: VsCodeApi | null;
   private readonly messageSubject = new Subject<ExtensionMessage>();
 
   /** Observable stream of all messages from the extension. */
-  readonly messages$: Observable<ExtensionMessage> = this.messageSubject.asObservable();
+  readonly messages$: Observable<ExtensionMessage> =
+    this.messageSubject.asObservable();
 
   constructor() {
     // acquireVsCodeApi is only available inside a VS Code webview.
@@ -112,18 +120,20 @@ export class VsCodeApiService {
       this.api = acquireVsCodeApi();
     } catch {
       this.api = null;
-      console.warn("[VsCodeApiService] acquireVsCodeApi not available — running outside VS Code");
+      console.warn(
+        '[VsCodeApiService] acquireVsCodeApi not available — running outside VS Code',
+      );
     }
 
     // Listen for messages from the extension.
     // The async pipe in templates calls markForCheck() automatically,
     // so zoneless change detection works without NgZone.run().
-    window.addEventListener("message", (event: MessageEvent) => {
+    window.addEventListener('message', (event: MessageEvent) => {
       this.messageSubject.next(event.data as ExtensionMessage);
     });
 
     // Signal to the extension that the webview is ready
-    this.postMessage({type: "ready"});
+    this.postMessage({ type: 'ready' });
   }
 
   /** Send a typed message to the extension host. */
@@ -133,11 +143,11 @@ export class VsCodeApiService {
 
   /** Open a file in the editor at an optional line number. */
   openFile(file: string, line?: number): void {
-    this.postMessage({type: "openFile", file, line});
+    this.postMessage({ type: 'openFile', file, line });
   }
 
   /** Request the extension to re-run the last test file. */
   rerun(): void {
-    this.postMessage({type: "rerun"});
+    this.postMessage({ type: 'rerun' });
   }
 }
