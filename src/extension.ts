@@ -1,18 +1,21 @@
 import "reflect-metadata";
 import Container from "typedi";
 import {ExtensionContext} from "vscode";
+import {EditorDecorations} from "./editor-decorations";
 import {SmartStartCommand} from "./smart-start-command";
 import {VsCodeService} from "./vs-code.service";
 import {TestResultsPanel} from "./webview";
 
 const vsCodeService = Container.get(VsCodeService);
 const testResultsPanel = Container.get(TestResultsPanel);
+const editorDecorations = Container.get(EditorDecorations);
 
 export async function activate(context: ExtensionContext) {
   const outputChannel = vsCodeService.setupOutputChanel();
   context.subscriptions.push(outputChannel);
 
   testResultsPanel.setExtensionUri(context.extensionUri);
+  editorDecorations.setExtensionUri(context.extensionUri);
 
   vsCodeService.appendLine('Congratulations, your extension "wallacy" is now active!');
 

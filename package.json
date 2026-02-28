@@ -56,7 +56,7 @@
     ]
   },
   "scripts": {
-    "compile": "npm run build:webview && node esbuild.js",
+    "compile": "node esbuild.js",
     "build:webview": "cd webview-ui && npm run build",
     "watch": "npm-run-all -p watch:*",
     "vsix": "npx @vscode/vsce package --no-dependencies",
@@ -72,9 +72,8 @@
     "test": "vscode-test",
     "test:integration": "vitest run --config vitest.config.mts",
     "test:integration:watch": "vitest watch --config vitest.config.mts",
-    "build:fe": "cd webview-ui && npm run build && cd ..",
     "install:it": "npm run compile && npm run vsix && code --install-extension wallacy-0.0.1.vsix",
-    "install:fe": "npm run build:fe && npm run compile && npm run vsix && code --install-extension wallacy-0.0.1.vsix"
+    "install:fe": "npm run build:webview && npm run compile && npm run vsix && code --install-extension wallacy-0.0.1.vsix"
   },
   "devDependencies": {
     "@types/node": "22.x",

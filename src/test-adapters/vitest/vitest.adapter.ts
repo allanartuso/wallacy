@@ -1,8 +1,8 @@
-import * as fs from "node:fs";
-import {createRequire} from "node:module";
-import * as path from "node:path";
-import {pathToFileURL} from "node:url";
-import Container from "typedi";
+import * as fs from 'node:fs';
+import { createRequire } from 'node:module';
+import * as path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import Container from 'typedi';
 import type {
   CollectedResults,
   ConsoleLogEntry,
@@ -12,13 +12,13 @@ import type {
   TestInfo,
   TestResult,
   TestStatus,
-} from "../../shared-types";
-import {VsCodeService} from "../../vs-code.service";
+} from '../../shared-types';
+import { VsCodeService } from '../../vs-code.service';
 
 export class VitestAdapter implements TestFrameworkAdapter {
   private readonly vsCodeService = Container.get(VsCodeService);
 
-  readonly name = "vitest" as const;
+  readonly name = 'vitest' as const;
   private hooks: LifecycleHooks | null = null;
   private lastResults: TestResult[] = [];
   private lastDuration = 0;
@@ -36,7 +36,10 @@ export class VitestAdapter implements TestFrameworkAdapter {
    * Discover tests in a project using fast glob — NO Vitest instance created here.
    * This avoids occupying worker resources for a lightweight file scan.
    */
-  async discoverTests(projectRoot: string, _configPath: string | null): Promise<TestInfo[]> {
+  async discoverTests(
+    projectRoot: string,
+    _configPath: string | null,
+  ): Promise<TestInfo[]> {
     const testFiles = this.globTestFiles(projectRoot);
     return testFiles.map((file) => ({
       id: file,
@@ -64,18 +67,23 @@ export class VitestAdapter implements TestFrameworkAdapter {
    *  - The project/config fingerprint changed (different project, config, or aliases)
    *  - The previous instance errored out
    */
-  async executeTests(testFiles: string[], options: ExecutionOptions): Promise<TestResult[]> {
+  async executeTests(
+    testFiles: string[],
+    options: ExecutionOptions,
+  ): Promise<TestResult[]> {
     const results: TestResult[] = [];
     const runStart = Date.now();
 
     const normalizedRoot = this.normalizePath(options.projectRoot);
     const normalizedWorkspaceRoot = this.normalizePath(options.workspaceRoot);
-    const normalizedConfig = options.configPath ? this.normalizePath(options.configPath) : undefined;
+    const normalizedConfig = options.configPath
+      ? this.normalizePath(options.configPath)
+      : undefined;
 
     // Convert input files to relative paths from project root
     const relFiles = testFiles.map((f) => {
       const abs = path.resolve(f);
-      return path.relative(normalizedRoot, abs).replace(/\\/g, "/");
+      return path.relative(normalizedRoot, abs).replace(/\\/g, '/');
     });
 
     // Absolute normalized file paths — used as CLI filters when a config is present
@@ -86,13 +94,17 @@ export class VitestAdapter implements TestFrameworkAdapter {
     // (monorepo root) because that's where the user normally runs vitest from,
     // and plugins like vite-tsconfig-paths may rely on cwd for resolution.
     // Without a config, use the project root directly.
-    const targetCwd = normalizedConfig ? normalizedWorkspaceRoot : normalizedRoot;
+    const targetCwd = normalizedConfig
+      ? normalizedWorkspaceRoot
+      : normalizedRoot;
 
     const originalCwd = process.cwd();
     try {
       process.chdir(targetCwd);
     } catch (err) {
-      this.vsCodeService.appendLine(`[VitestAdapter] Failed to chdir to ${targetCwd}: ` + err);
+      this.vsCodeService.appendLine(
+        `[VitestAdapter] Failed to chdir to ${targetCwd}: ` + err,
+      );
     }
 
     // Compute a fingerprint to decide whether we can reuse the cached instance
@@ -102,15 +114,24 @@ export class VitestAdapter implements TestFrameworkAdapter {
       normalizedConfig,
       options.pathAliases,
     );
-    const canReuse = this.cachedVitest && this.cachedFingerprint === fingerprint;
+    const canReuse =
+      this.cachedVitest && this.cachedFingerprint === fingerprint;
 
-    this.vsCodeService.appendLine("[VitestAdapter] Starting test run for files: " + relFiles.join(", "));
-    this.vsCodeService.appendLine(`[VitestAdapter] projectRoot: ${normalizedRoot}`);
-    this.vsCodeService.appendLine(`[VitestAdapter] workspaceRoot: ${normalizedWorkspaceRoot}`);
-    this.vsCodeService.appendLine(`[VitestAdapter] cwd: ${targetCwd}`);
-    this.vsCodeService.appendLine(`[VitestAdapter] config: ${normalizedConfig ?? "none"}`);
     this.vsCodeService.appendLine(
-      `[VitestAdapter] session reuse: ${canReuse ? "YES (rerunFiles)" : "NO (fresh instance)"}`,
+      '[VitestAdapter] Starting test run for files: ' + relFiles.join(', '),
+    );
+    this.vsCodeService.appendLine(
+      `[VitestAdapter] projectRoot: ${normalizedRoot}`,
+    );
+    this.vsCodeService.appendLine(
+      `[VitestAdapter] workspaceRoot: ${normalizedWorkspaceRoot}`,
+    );
+    this.vsCodeService.appendLine(`[VitestAdapter] cwd: ${targetCwd}`);
+    this.vsCodeService.appendLine(
+      `[VitestAdapter] config: ${normalizedConfig ?? 'none'}`,
+    );
+    this.vsCodeService.appendLine(
+      `[VitestAdapter] session reuse: ${canReuse ? 'YES (rerunFiles)' : 'NO (fresh instance)'}`,
     );
 
     try {
@@ -130,17 +151,27 @@ export class VitestAdapter implements TestFrameworkAdapter {
         }
 
         // Build test specifications for the files we want to rerun
-        const specs = rerunPaths.flatMap((f: string) => vitest.getModuleSpecifications(f));
+        const specs = rerunPaths.flatMap((f: string) =>
+          vitest.getModuleSpecifications(f),
+        );
         if (specs.length === 0) {
           // If no cached specs, re-glob to pick up specifications
-          this.vsCodeService.appendLine("[VitestAdapter] No cached specs — re-globbing...");
+          this.vsCodeService.appendLine(
+            '[VitestAdapter] No cached specs — re-globbing...',
+          );
           await vitest.globTestSpecifications(rerunPaths);
-          const retrySpecs = rerunPaths.flatMap((f: string) => vitest.getModuleSpecifications(f));
+          const retrySpecs = rerunPaths.flatMap((f: string) =>
+            vitest.getModuleSpecifications(f),
+          );
           if (retrySpecs.length > 0) {
-            this.vsCodeService.appendLine(`[VitestAdapter] Re-globbed ${retrySpecs.length} spec(s)`);
+            this.vsCodeService.appendLine(
+              `[VitestAdapter] Re-globbed ${retrySpecs.length} spec(s)`,
+            );
             await vitest.runTestSpecifications(retrySpecs);
           } else {
-            this.vsCodeService.appendLine("[VitestAdapter] Still no specs — falling back to fresh instance");
+            this.vsCodeService.appendLine(
+              '[VitestAdapter] Still no specs — falling back to fresh instance',
+            );
             await this.closeCachedInstance();
             vitest = await this.createVitestInstance(
               options,
@@ -152,7 +183,7 @@ export class VitestAdapter implements TestFrameworkAdapter {
             );
             if (!vitest) {
               this.vsCodeService.appendLine(
-                "[VitestAdapter] startVitest returned null — tests may have failed to start",
+                '[VitestAdapter] startVitest returned null — tests may have failed to start',
               );
               return results;
             }
@@ -160,7 +191,9 @@ export class VitestAdapter implements TestFrameworkAdapter {
             this.cachedFingerprint = fingerprint;
           }
         } else {
-          this.vsCodeService.appendLine(`[VitestAdapter] Rerunning ${specs.length} spec(s) via runTestSpecifications`);
+          this.vsCodeService.appendLine(
+            `[VitestAdapter] Rerunning ${specs.length} spec(s) via runTestSpecifications`,
+          );
           await vitest.runTestSpecifications(specs);
         }
       } else {
@@ -178,7 +211,9 @@ export class VitestAdapter implements TestFrameworkAdapter {
         );
 
         if (!vitest) {
-          this.vsCodeService.appendLine("[VitestAdapter] startVitest returned null — tests may have failed to start");
+          this.vsCodeService.appendLine(
+            '[VitestAdapter] startVitest returned null — tests may have failed to start',
+          );
           return results;
         }
 
@@ -189,9 +224,13 @@ export class VitestAdapter implements TestFrameworkAdapter {
 
       // Extract results from TestModules using Vitest's state API
       const testModules = vitest.state.getTestModules();
-      this.vsCodeService.appendLine(`[VitestAdapter] Test modules found: ${testModules.length}`);
+      this.vsCodeService.appendLine(
+        `[VitestAdapter] Test modules found: ${testModules.length}`,
+      );
       if (testModules.length === 0) {
-        this.vsCodeService.appendLine("[VitestAdapter] No test modules — vitest may not have matched any files");
+        this.vsCodeService.appendLine(
+          '[VitestAdapter] No test modules — vitest may not have matched any files',
+        );
       }
       for (const testModule of testModules) {
         const moduleId: string = testModule.moduleId;
@@ -211,7 +250,9 @@ export class VitestAdapter implements TestFrameworkAdapter {
         this.hooks?.onFileEnd?.(moduleId);
       }
     } catch (err: any) {
-      this.vsCodeService.appendLine("[VitestAdapter] Error running vitest: " + err);
+      this.vsCodeService.appendLine(
+        '[VitestAdapter] Error running vitest: ' + err,
+      );
 
       // Invalidate cached instance on error — it may be in a broken state
       await this.closeCachedInstance();
@@ -223,7 +264,7 @@ export class VitestAdapter implements TestFrameworkAdapter {
           file,
           suite: [],
           name: path.basename(file),
-          status: "failed",
+          status: 'failed',
           duration: 0,
           error: {
             message: err.message ?? String(err),
@@ -279,7 +320,7 @@ export class VitestAdapter implements TestFrameworkAdapter {
     const status = this.mapState(result?.state);
 
     // Extract error information if present
-    let error: TestResult["error"] = undefined;
+    let error: TestResult['error'] = undefined;
     if (result?.errors && result.errors.length > 0) {
       const firstError = result.errors[0];
       error = {
@@ -311,7 +352,7 @@ export class VitestAdapter implements TestFrameworkAdapter {
   private buildSuiteChainFromParent(testCase: any): string[] {
     const chain: string[] = [];
     let current = testCase.parent;
-    while (current && current.type === "suite") {
+    while (current && current.type === 'suite') {
       chain.unshift(current.name);
       current = current.parent;
     }
@@ -323,14 +364,14 @@ export class VitestAdapter implements TestFrameworkAdapter {
    */
   private mapState(state: string | undefined): TestStatus {
     switch (state) {
-      case "passed":
-        return "passed";
-      case "failed":
-        return "failed";
-      case "skipped":
-        return "skipped";
+      case 'passed':
+        return 'passed';
+      case 'failed':
+        return 'failed';
+      case 'skipped':
+        return 'skipped';
       default:
-        return "skipped";
+        return 'skipped';
     }
   }
 
@@ -351,17 +392,23 @@ export class VitestAdapter implements TestFrameworkAdapter {
     let vitestNode: any;
     try {
       const nativeWorkspaceRoot = path.resolve(options.workspaceRoot);
-      const anchorUrl = pathToFileURL(path.join(nativeWorkspaceRoot, "__placeholder__.js")).href;
-      this.vsCodeService.appendLine(`[VitestAdapter] Resolving vitest/node from: ${anchorUrl}`);
+      const anchorUrl = pathToFileURL(
+        path.join(nativeWorkspaceRoot, '__placeholder__.js'),
+      ).href;
+      this.vsCodeService.appendLine(
+        `[VitestAdapter] Resolving vitest/node from: ${anchorUrl}`,
+      );
       const projectRequire = createRequire(anchorUrl);
-      const vitestNodePath = projectRequire.resolve("vitest/node");
-      this.vsCodeService.appendLine(`[VitestAdapter] Resolved vitest/node at: ${vitestNodePath}`);
+      const vitestNodePath = projectRequire.resolve('vitest/node');
+      this.vsCodeService.appendLine(
+        `[VitestAdapter] Resolved vitest/node at: ${vitestNodePath}`,
+      );
       vitestNode = await import(pathToFileURL(vitestNodePath).href);
     } catch (resolveErr: any) {
       this.vsCodeService.appendLine(
         `[VitestAdapter] Failed to resolve vitest from workspace root: ${resolveErr.message}`,
       );
-      vitestNode = await import("vitest/node");
+      vitestNode = await import('vitest/node');
     }
     const startVitest: typeof vitestNode.startVitest = vitestNode.startVitest;
 
@@ -369,10 +416,19 @@ export class VitestAdapter implements TestFrameworkAdapter {
     const cliOptions: Record<string, any> = {
       // Use watch mode so the instance stays alive for rerunFiles()
       watch: true,
-      reporters: ["default"],
+      reporters: ['default'],
       passWithNoTests: true,
-      onConsoleLog: (log: string, type: "stdout" | "stderr", taskId?: string) => {
-        const entry = this.parseConsoleLog(log, type, taskId);
+      // Include task location (line/column) so we can place gutter icons
+      includeTaskLocation: true,
+      onConsoleLog: (
+        log: string,
+        type: 'stdout' | 'stderr',
+        entity?: unknown,
+      ) => {
+        this.vsCodeService.appendLine(
+          `[VitestAdapter] onConsoleLog: type=${type}, entity=${typeof entity === 'string' ? entity : typeof entity}, log=${log.slice(0, 100)}`,
+        );
+        const entry = this.parseConsoleLog(log, type, entity);
         this.hooks?.onConsoleLog?.(entry);
         return false;
       },
@@ -399,7 +455,9 @@ export class VitestAdapter implements TestFrameworkAdapter {
         ...viteOverrides.resolve,
         alias: resolvedAliases,
       };
-      this.vsCodeService.appendLine(`[VitestAdapter] Injected ${Object.keys(resolvedAliases).length} path alias(es)}`);
+      this.vsCodeService.appendLine(
+        `[VitestAdapter] Injected ${Object.keys(resolvedAliases).length} path alias(es)}`,
+      );
     }
 
     const filterFiles = normalizedConfig ? absFiles : relFiles;
@@ -407,9 +465,16 @@ export class VitestAdapter implements TestFrameworkAdapter {
     this.vsCodeService.appendLine(
       `[VitestAdapter] Vitest CLI options: ${JSON.stringify(cliOptions)}, Vite overrides keys: ${JSON.stringify(Object.keys(viteOverrides))}`,
     );
-    this.vsCodeService.appendLine(`[VitestAdapter] CLI filters (2nd arg): ${JSON.stringify(filterFiles)}`);
+    this.vsCodeService.appendLine(
+      `[VitestAdapter] CLI filters (2nd arg): ${JSON.stringify(filterFiles)}`,
+    );
 
-    const vitest = await startVitest("test", filterFiles, cliOptions, viteOverrides);
+    const vitest = await startVitest(
+      'test',
+      filterFiles,
+      cliOptions,
+      viteOverrides,
+    );
     return vitest;
   }
 
@@ -438,7 +503,12 @@ export class VitestAdapter implements TestFrameworkAdapter {
     configPath: string | undefined,
     pathAliases: Record<string, string[]>,
   ): string {
-    return JSON.stringify({projectRoot, workspaceRoot, configPath, pathAliases});
+    return JSON.stringify({
+      projectRoot,
+      workspaceRoot,
+      configPath,
+      pathAliases,
+    });
   }
 
   // ─── Helpers ──────────────────────────────────────────────
@@ -457,7 +527,9 @@ export class VitestAdapter implements TestFrameworkAdapter {
    * Non-wildcard aliases are passed through as-is.
    * Paths are normalized to forward slashes for Vite compatibility.
    */
-  private buildViteAliases(pathAliases: Record<string, string[]>): Record<string, string> {
+  private buildViteAliases(
+    pathAliases: Record<string, string[]>,
+  ): Record<string, string> {
     const aliases: Record<string, string> = {};
 
     for (const [pattern, targets] of Object.entries(pathAliases)) {
@@ -466,13 +538,13 @@ export class VitestAdapter implements TestFrameworkAdapter {
       }
 
       // Normalize to forward slashes for Vite
-      const firstTarget = targets[0].replace(/\\/g, "/");
+      const firstTarget = targets[0].replace(/\\/g, '/');
 
-      if (pattern.endsWith("/*")) {
+      if (pattern.endsWith('/*')) {
         // Wildcard alias: "@shared/*" → "@shared"
         const aliasKey = pattern.slice(0, -2);
         // Strip trailing /* or * from the resolved path
-        const aliasValue = firstTarget.replace(/\/?\*$/, "");
+        const aliasValue = firstTarget.replace(/\/?\*$/, '');
         aliases[aliasKey] = aliasValue;
       } else {
         // Exact alias — use as-is
@@ -490,30 +562,31 @@ export class VitestAdapter implements TestFrameworkAdapter {
    * @param stream  "stdout" or "stderr"
    * @param taskId  Optional vitest task ID — this is typically the module/file path
    */
-  private parseConsoleLog(log: string, stream: "stdout" | "stderr", taskId?: string): ConsoleLogEntry {
+  private parseConsoleLog(
+    log: string,
+    stream: 'stdout' | 'stderr',
+    entity?: unknown,
+  ): ConsoleLogEntry {
     let file: string | undefined;
     let line: number | undefined;
     let content = log;
 
-    // The taskId from Vitest is usually the absolute file path of the test module
-    if (taskId) {
-      file = taskId;
-    }
-
     // Try to extract file info from vitest's console log format
     // Vitest logs look like: "stdout | src/file.ts > suite > test"
-    const headerMatch = log.match(/^(stdout|stderr)\s+\|\s+(.+?)(?:\s*>\s*.+)?\n([\s\S]*)$/);
+    const headerMatch = log.match(
+      /^(stdout|stderr)\s+\|\s+(.+?)(?:\s*>\s*.+)?\n([\s\S]*)$/,
+    );
     if (headerMatch) {
-      if (!file) {
-        file = headerMatch[2].trim();
-      }
+      file = headerMatch[2].trim();
       content = headerMatch[3] || log;
     }
 
-    // Also try to find source location from a stack-like pattern in content
-    // e.g. "at Object.<anonymous> (src/file.ts:42:15)"
+    // Try to find source location from a stack-like pattern in content
+    // e.g. "at Object.<anonymous> (src/file.ts:42:15)" or "❯ src/file.ts:28:65"
     if (!line) {
-      const stackMatch = content.match(/(?:at\s+.*?\(|❯\s*|at\s+)([A-Za-z]:[\\/].*?|\/.*?):(\d+)/);
+      const stackMatch = content.match(
+        /(?:at\s+.*?\(|❯\s*|at\s+)((?:[A-Za-z]:[\\/]|\/|\.\/|\.\.\/|[\w@][\w./@\\-]*)[\w./@\\-]+):(\d+)/,
+      );
       if (stackMatch) {
         if (!file) {
           file = stackMatch[1];
@@ -521,6 +594,11 @@ export class VitestAdapter implements TestFrameworkAdapter {
         line = parseInt(stackMatch[2], 10);
       }
     }
+
+    // Note: We intentionally do NOT fall back to entity.moduleId for `file`
+    // because the entity is the test module (spec file), not necessarily the
+    // file that called console.log. Showing the spec file would be misleading
+    // when the log originates from an imported service/utility.
 
     return {
       stream,
@@ -534,11 +612,15 @@ export class VitestAdapter implements TestFrameworkAdapter {
   private normalizePath(p: string): string {
     const absolute = path.resolve(p);
     let normalized = absolute;
-    if (process.platform === "win32" && absolute.length > 1 && absolute[1] === ":") {
+    if (
+      process.platform === 'win32' &&
+      absolute.length > 1 &&
+      absolute[1] === ':'
+    ) {
       // Force UPPERCASE drive letters — this is the most reliable for Vite on Windows.
       normalized = absolute[0].toUpperCase() + absolute.substring(1);
     }
-    return normalized.replace(/\\/g, "/");
+    return normalized.replace(/\\/g, '/');
   }
 
   // ─── Helpers ──────────────────────────────────────────────
@@ -555,14 +637,19 @@ export class VitestAdapter implements TestFrameworkAdapter {
     }
     let entries: fs.Dirent[];
     try {
-      entries = fs.readdirSync(dir, {withFileTypes: true});
+      entries = fs.readdirSync(dir, { withFileTypes: true });
     } catch {
       return;
     }
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (["node_modules", "dist", ".git", "coverage", ".nx"].includes(entry.name)) continue;
+        if (
+          ['node_modules', 'dist', '.git', 'coverage', '.nx'].includes(
+            entry.name,
+          )
+        )
+          continue;
         this.walkDir(fullPath, results, depth + 1);
       } else if (entry.isFile()) {
         if (/\.(test|spec)\.(ts|js|tsx|jsx|mts|mjs)$/.test(entry.name)) {

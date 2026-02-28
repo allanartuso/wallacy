@@ -158,7 +158,15 @@ export class TestResultsPanel {
   }
 
   notifyConsoleLog(entry: ConsoleLogEntry): void {
-    this.postMessage({type: "consoleLog", data: entry});
+    // Sanitize the entry to avoid circular references from Vitest task objects
+    const safeEntry: ConsoleLogEntry = {
+      stream: entry.stream,
+      content: typeof entry.content === "string" ? entry.content : String(entry.content),
+      file: typeof entry.file === "string" ? entry.file : undefined,
+      line: typeof entry.line === "number" ? entry.line : undefined,
+      timestamp: entry.timestamp,
+    };
+    this.postMessage({type: "consoleLog", data: safeEntry});
   }
 
   notifyCachedResult(file: string, cachedAt: number, contentHash: string): void {
