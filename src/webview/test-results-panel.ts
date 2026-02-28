@@ -161,6 +161,10 @@ export class TestResultsPanel {
     this.postMessage({type: "consoleLog", data: entry});
   }
 
+  notifyCachedResult(file: string, cachedAt: number, contentHash: string): void {
+    this.postMessage({type: "cachedResult", data: {file, cachedAt, contentHash}});
+  }
+
   dispose(): void {
     this.panel?.dispose();
   }

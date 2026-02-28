@@ -1,7 +1,7 @@
 import {AsyncPipe, DecimalPipe} from "@angular/common";
-import {Component} from "@angular/core";
+import {Component, inject} from "@angular/core";
 import {Observable, combineLatest, map} from "rxjs";
-import {TestStateService} from "../../services/test-state.service";
+import {CachedResultInfo, TestStateService} from "../../services/test-state.service";
 import {TestResult} from "../../services/vscode-api.service";
 
 interface Summary {
@@ -19,26 +19,25 @@ interface Summary {
   styleUrl: "./summary-bar.component.scss",
 })
 export class SummaryBarComponent {
-  readonly summary$: Observable<Summary | null>;
-  readonly visible$: Observable<boolean>;
+  private readonly state = inject(TestStateService);
 
-  constructor(private readonly state: TestStateService) {
-    this.summary$ = this.state.results$.pipe(
-      map((results) => {
-        if (results.length === 0) {
-          return null;
-        }
-        return {
-          passed: results.filter((r: TestResult) => r.status === "passed").length,
-          failed: results.filter((r: TestResult) => r.status === "failed").length,
-          skipped: results.filter((r: TestResult) => r.status === "skipped").length,
-          duration: results.reduce((sum: number, r: TestResult) => sum + (r.duration || 0), 0),
-        };
-      }),
-    );
+  readonly summary$: Observable<Summary | null> = this.state.results$.pipe(
+    map((results) => {
+      if (results.length === 0) {
+        return null;
+      }
+      return {
+        passed: results.filter((r: TestResult) => r.status === "passed").length,
+        failed: results.filter((r: TestResult) => r.status === "failed").length,
+        skipped: results.filter((r: TestResult) => r.status === "skipped").length,
+        duration: results.reduce((sum: number, r: TestResult) => sum + (r.duration || 0), 0),
+      };
+    }),
+  );
 
-    this.visible$ = combineLatest([this.state.phase$, this.state.results$]).pipe(
-      map(([phase, results]) => results.length > 0 || phase === "running" || phase === "complete"),
-    );
-  }
+  readonly visible$: Observable<boolean> = combineLatest([this.state.phase$, this.state.results$]).pipe(
+    map(([phase, results]) => results.length > 0 || phase === "running" || phase === "complete"),
+  );
+
+  readonly cached$: Observable<CachedResultInfo | null> = this.state.cachedResult$;
 }

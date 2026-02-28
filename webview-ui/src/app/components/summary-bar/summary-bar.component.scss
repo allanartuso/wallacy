@@ -33,3 +33,15 @@
 .sum-time .si {
   color: var(--muted);
 }
+
+.sum-cached {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--blue);
+  opacity: 0.9;
+
+  .si {
+    color: var(--blue);
+    font-size: 12px;
+  }
+}

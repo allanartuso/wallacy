@@ -2,9 +2,10 @@ import * as path from "path";
 import Container, {Service} from "typedi";
 import {FileSystemWatcher} from "vscode";
 import {IPCClient} from "./ipc-client";
-import type {SmartStartResult, TestResult} from "./shared-types";
+import type {ConsoleLogEntry, SmartStartResult, TestResult} from "./shared-types";
 import {SmartStartCallbacks, SmartStartExecutor} from "./smart-start-executor";
 import {SmartStartSession} from "./smart-start-session";
+import {TestResultCache} from "./test-result-cache";
 import {isTestFile} from "./test-utils";
 import {VsCodeService} from "./vs-code.service";
 import {TestResultsPanel} from "./webview";
@@ -16,6 +17,7 @@ export class SmartStartCommand {
   private readonly smartStartSession = Container.get(SmartStartSession);
   private readonly smartStartExecutor = Container.get(SmartStartExecutor);
   private readonly testResultsPanel = Container.get(TestResultsPanel);
+  private readonly testResultCache = Container.get(TestResultCache);
 
   private pendingSmartStartFile: string | null = null;
   private fileWatcher: FileSystemWatcher | null = null;
@@ -93,8 +95,10 @@ export class SmartStartCommand {
   /**
    * Run the full Smart Start pipeline for a specific file.
    * Called by `execute()` (from active editor) and by re-run (from remembered path).
+   *
+   * @param forceRun If true, skip cache and re-run the tests.
    */
-  async executeForFile(filePath: string) {
+  async executeForFile(filePath: string, forceRun = false) {
     // ─── Open the test results panel and wire up re-run ────
     this.testResultsPanel.createOrShow();
     this.testResultsPanel.notifyRunStarted(filePath);
@@ -103,10 +107,29 @@ export class SmartStartCommand {
       this.executeForFile(rememberedFile);
     };
 
+    // ─── Check cache first ─────────────────────────────────
+    if (!forceRun) {
+      const cached = this.testResultCache.lookup(filePath);
+      if (cached) {
+        const stats = this.testResultCache.getStats();
+        this.vsCodeService.appendLine(
+          `[Extension] Cache HIT for ${path.basename(filePath)} ` +
+            `(hash: ${cached.contentHash.slice(0, 8)}…, hits: ${stats.hits})`,
+        );
+        this.replayCachedResult(cached);
+        return;
+      }
+      this.vsCodeService.appendLine(`[Extension] Cache miss for ${path.basename(filePath)} — running tests`);
+    } else {
+      this.vsCodeService.appendLine(`[Extension] Force re-run for ${path.basename(filePath)} — skipping cache`);
+    }
+
     // ─── Drive the full resolution → execution pipeline ────
     this.pendingSmartStartFile = filePath;
 
     this.vsCodeService.appendLine(`[Extension] Resolving project and framework for: ${path.basename(filePath)}`);
+
+    const consoleLogs: ConsoleLogEntry[] = [];
 
     const callbacks: SmartStartCallbacks = {
       onResolved: (result) => {
@@ -126,6 +149,7 @@ export class SmartStartCommand {
         this.testResultsPanel.notifyRunComplete(collected);
       },
       onConsoleLog: (entry) => {
+        consoleLogs.push(entry);
         this.testResultsPanel.notifyConsoleLog(entry);
       },
       onError: (error) => {
@@ -139,15 +163,97 @@ export class SmartStartCommand {
     try {
       const executeResult = await this.smartStartExecutor.execute(filePath, callbacks);
 
+      // ─── Store result in cache ─────────────────────────
+      this.testResultCache.store(
+        filePath,
+        executeResult.resolution,
+        executeResult.tests,
+        executeResult.results,
+        executeResult.collected,
+        consoleLogs,
+      );
+
+      const stats = this.testResultCache.getStats();
       this.vsCodeService.appendLine(
         `[Extension] Smart Start complete — ` +
-          `${executeResult.results.length} result(s) from ${executeResult.resolution.project.name}`,
+          `${executeResult.results.length} result(s) from ${executeResult.resolution.project.name} ` +
+          `(cached, total entries: ${stats.size})`,
       );
     } catch (error: any) {
       this.vsCodeService.showErrorMessage(`Smart Start failed: ${error.message}`);
     } finally {
       this.pendingSmartStartFile = null;
     }
+  }
+
+  /**
+   * Reset the test result cache. Called by the "Wallacy: Reset Cache" command.
+   */
+  resetCache(): void {
+    const stats = this.testResultCache.getStats();
+    this.testResultCache.reset();
+    this.vsCodeService.appendLine(
+      `[Extension] Cache reset — cleared ${stats.size} entries ` + `(was ${stats.hits} hits / ${stats.misses} misses)`,
+    );
+    this.vsCodeService.showInformationMessage(`Wallacy cache cleared (${stats.size} entries removed)`);
+  }
+
+  /**
+   * Force re-run a specific file, bypassing the cache.
+   */
+  async forceRerun(): Promise<void> {
+    const editor = this.vsCodeService.activeTextEditor;
+    if (!editor) {
+      this.vsCodeService.showErrorMessage("No active editor found");
+      return;
+    }
+    const filePath = editor.document.uri.fsPath;
+    if (!isTestFile(filePath)) {
+      this.vsCodeService.showErrorMessage(`${path.basename(filePath)} is not a test file`);
+      return;
+    }
+    this.testResultCache.invalidate(filePath);
+    await this.executeForFile(filePath, true);
+  }
+
+  /**
+   * Replay a cached test run — sends all the same notifications to the webview
+   * panel as a real run, but instantly from memory.
+   */
+  private replayCachedResult(cached: import("./test-result-cache").CachedTestRun): void {
+    // Resolution
+    this.handleSmartStartResponse(cached.resolution);
+    this.testResultsPanel.notifyResolution(cached.resolution);
+
+    // Tests discovered
+    this.handleTestDiscovery(cached.tests);
+    this.testResultsPanel.notifyTestsDiscovered(cached.tests);
+
+    // Individual test results
+    for (const result of cached.results) {
+      this.handleTestResult(result);
+      this.testResultsPanel.notifyTestResult(result);
+    }
+
+    // Console logs
+    for (const entry of cached.consoleLogs) {
+      this.testResultsPanel.notifyConsoleLog(entry);
+    }
+
+    // Run complete
+    this.handleTestRunComplete(cached.collected);
+    this.testResultsPanel.notifyRunComplete(cached.collected);
+
+    // Notify webview this was a cached result
+    this.testResultsPanel.notifyCachedResult(cached.filePath, cached.cachedAt, cached.contentHash);
+
+    const passed = cached.collected.results.filter((r) => r.status === "passed").length;
+    const failed = cached.collected.results.filter((r) => r.status === "failed").length;
+    this.vsCodeService.appendLine(
+      `[Extension] Replayed cached results for ${path.basename(cached.filePath)} — ` +
+        `${passed} passed, ${failed} failed ` +
+        `(cached ${new Date(cached.cachedAt).toLocaleTimeString()})`,
+    );
   }
 
   /**

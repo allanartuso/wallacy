@@ -16,6 +16,7 @@ let engine:
     }
   | undefined;
 
+// TODO: probably unnecessary, remove it. Almost the entire core-engine is not used anymore. Only nx-resolver and smart-start folder are relevant
 const engineInitializer = async () => {
   vsCodeService.appendLine("[Extension] Starting Core Engine...");
   try {
@@ -71,6 +72,13 @@ export async function activate(context: ExtensionContext) {
         engine = undefined;
       }
       vsCodeService.appendLine("[Extension] Engine stopped. Run Smart Start again to restart.");
+    }),
+    vsCodeService.registerCommand("wallacy.resetCache", () => {
+      smartStartCommand.resetCache();
+    }),
+    vsCodeService.registerCommand("wallacy.forceRerun", async () => {
+      smartStartCommand.resetDisposed();
+      smartStartCommand.forceRerun();
     }),
   ];
 

@@ -19,6 +19,12 @@
         <b>{{ s.duration | number: "1.0-0" }}</b
         >ms
       </div>
+      @if (cached$ | async; as c) {
+        <div class="sum-item sum-cached" title="Cached result — file unchanged since last run">
+          <span class="si">⚡</span>
+          cached
+        </div>
+      }
     </section>
   }
 }

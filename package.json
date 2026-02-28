@@ -34,6 +34,16 @@
         "command": "wallacy.stopEngine",
         "title": "Wallacy: Stop Engine",
         "icon": "$(debug-stop)"
+      },
+      {
+        "command": "wallacy.resetCache",
+        "title": "Wallacy: Reset Cache",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "wallacy.forceRerun",
+        "title": "Wallacy: Force Re-run (Skip Cache)",
+        "icon": "$(refresh)"
       }
     ],
     "keybindings": [
@@ -62,7 +72,7 @@
     "test": "vscode-test",
     "test:integration": "vitest run --config vitest.config.mts",
     "test:integration:watch": "vitest watch --config vitest.config.mts",
-    "install": "npm run compile && npm run vsix && code --install-extension wallacy-0.0.1.vsix"
+    "install": "cd webview-ui/ && npm run build && cd .. && npm run compile && npm run vsix && code --install-extension wallacy-0.0.1.vsix"
   },
   "devDependencies": {
     "@types/babel__generator": "^7.27.0",

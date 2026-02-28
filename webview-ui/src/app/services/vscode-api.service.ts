@@ -82,7 +82,8 @@ export type ExtensionMessage =
   | {type: "testResult"; data: TestResult}
   | {type: "runComplete"; data: RunCompletePayload}
   | {type: "consoleLog"; data: ConsoleLogEntry}
-  | {type: "runStarted"; data: {file: string; timestamp: number}};
+  | {type: "runStarted"; data: {file: string; timestamp: number}}
+  | {type: "cachedResult"; data: {file: string; cachedAt: number; contentHash: string}};
 
 export type WebviewMessage = {type: "openFile"; file: string; line?: number} | {type: "rerun"} | {type: "ready"};
 

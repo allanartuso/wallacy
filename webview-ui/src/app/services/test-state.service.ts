@@ -20,6 +20,12 @@ import {
 
 export type RunPhase = "idle" | "resolving" | "discovering" | "running" | "complete";
 
+export interface CachedResultInfo {
+  file: string;
+  cachedAt: number;
+  contentHash: string;
+}
+
 @Injectable({providedIn: "root"})
 export class TestStateService {
   // ─── Observable state ────────────────────────────────────
@@ -44,6 +50,10 @@ export class TestStateService {
 
   private readonly currentFileSubject = new BehaviorSubject<string | null>(null);
   readonly currentFile$ = this.currentFileSubject.asObservable();
+
+  /** Non-null when the current results came from cache rather than a live run. */
+  private readonly cachedResultSubject = new BehaviorSubject<CachedResultInfo | null>(null);
+  readonly cachedResult$ = this.cachedResultSubject.asObservable();
 
   constructor(private readonly vsCodeApi: VsCodeApiService) {
     this.vsCodeApi.messages$.subscribe((msg) => this.handleMessage(msg));
@@ -93,6 +103,10 @@ export class TestStateService {
         this.consoleLogsSubject.next([...logs, msg.data]);
         break;
       }
+
+      case "cachedResult":
+        this.cachedResultSubject.next(msg.data);
+        break;
     }
   }
 
@@ -104,5 +118,6 @@ export class TestStateService {
     this.runCompleteSubject.next(null);
     this.consoleLogsSubject.next([]);
     this.currentFileSubject.next(null);
+    this.cachedResultSubject.next(null);
   }
 }
