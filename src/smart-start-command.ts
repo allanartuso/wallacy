@@ -1,6 +1,8 @@
 import * as path from "path";
 import Container, {Service} from "typedi";
+import * as vscode from "vscode";
 import {FileSystemWatcher} from "vscode";
+import {EditorDecorations} from "./editor-decorations";
 import {IPCClient} from "./ipc-client";
 import type {ConsoleLogEntry, SmartStartResult, TestResult} from "./shared-types";
 import {SmartStartCallbacks, SmartStartExecutor} from "./smart-start-executor";
@@ -18,14 +20,17 @@ export class SmartStartCommand {
   private readonly smartStartExecutor = Container.get(SmartStartExecutor);
   private readonly testResultsPanel = Container.get(TestResultsPanel);
   private readonly testResultCache = Container.get(TestResultCache);
+  private readonly editorDecorations = Container.get(EditorDecorations);
 
   private pendingSmartStartFile: string | null = null;
   private fileWatcher: FileSystemWatcher | null = null;
   private workspaceRoot: string | null = null;
   private disposed = false;
+  private editorChangeDisposable: vscode.Disposable | null = null;
 
   constructor() {
     this.setupIPCHandlers();
+    this.setupEditorChangeListener();
   }
 
   setupIPCHandlers() {
@@ -51,6 +56,17 @@ export class SmartStartCommand {
       this.handleEngineError(payload);
     });
     this.vsCodeService.showInformationMessage("SmartStart has started");
+  }
+
+  /**
+   * Re-apply editor decorations when the user switches to a tab that has results.
+   */
+  private setupEditorChangeListener(): void {
+    this.editorChangeDisposable = vscode.window.onDidChangeActiveTextEditor((editor) => {
+      if (editor) {
+        this.editorDecorations.refreshForEditor(editor);
+      }
+    });
   }
 
   async execute() {
@@ -99,6 +115,9 @@ export class SmartStartCommand {
    * @param forceRun If true, skip cache and re-run the tests.
    */
   async executeForFile(filePath: string, forceRun = false) {
+    // ─── Clear previous editor decorations ─────────────────
+    this.editorDecorations.clearDecorations();
+
     // ─── Open the test results panel and wire up re-run ────
     this.testResultsPanel.createOrShow();
     this.testResultsPanel.notifyRunStarted(filePath);
@@ -173,6 +192,12 @@ export class SmartStartCommand {
         consoleLogs,
       );
 
+      // ─── Apply editor decorations (gutter + inline) ───
+      this.editorDecorations.applyTestResults(filePath, executeResult.collected.results);
+      if (consoleLogs.length > 0) {
+        this.editorDecorations.applyConsoleLogs(filePath, consoleLogs);
+      }
+
       const stats = this.testResultCache.getStats();
       this.vsCodeService.appendLine(
         `[Extension] Smart Start complete — ` +
@@ -246,6 +271,12 @@ export class SmartStartCommand {
 
     // Notify webview this was a cached result
     this.testResultsPanel.notifyCachedResult(cached.filePath, cached.cachedAt, cached.contentHash);
+
+    // Apply editor decorations from cached data
+    this.editorDecorations.applyTestResults(cached.filePath, cached.collected.results);
+    if (cached.consoleLogs.length > 0) {
+      this.editorDecorations.applyConsoleLogs(cached.filePath, cached.consoleLogs);
+    }
 
     const passed = cached.collected.results.filter((r) => r.status === "passed").length;
     const failed = cached.collected.results.filter((r) => r.status === "failed").length;
@@ -361,10 +392,14 @@ export class SmartStartCommand {
     if (this.fileWatcher) {
       this.fileWatcher.dispose();
     }
+    if (this.editorChangeDisposable) {
+      this.editorChangeDisposable.dispose();
+    }
     this.iPCClient.disconnect();
     this.smartStartSession.clearSession();
     this.smartStartExecutor.dispose();
     this.testResultsPanel.dispose();
+    this.editorDecorations.dispose();
 
     this.vsCodeService.appendLine("[Extension] SmartStartCommand disposed");
   }

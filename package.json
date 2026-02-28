@@ -72,17 +72,14 @@
     "test": "vscode-test",
     "test:integration": "vitest run --config vitest.config.mts",
     "test:integration:watch": "vitest watch --config vitest.config.mts",
-    "install": "cd webview-ui/ && npm run build && cd .. && npm run compile && npm run vsix && code --install-extension wallacy-0.0.1.vsix"
+    "build:fe": "cd webview-ui && npm run build && cd ..",
+    "install:it": "npm run compile && npm run vsix && code --install-extension wallacy-0.0.1.vsix",
+    "install:fe": "npm run build:fe && npm run compile && npm run vsix && code --install-extension wallacy-0.0.1.vsix"
   },
   "devDependencies": {
-    "@types/babel__generator": "^7.27.0",
-    "@types/babel__traverse": "^7.28.0",
-    "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
     "@types/vscode": "^1.104.0",
-    "@types/ws": "^8.18.1",
     "@vscode/test-cli": "^0.0.12",
-    "@vscode/test-electron": "^2.5.2",
     "esbuild": "^0.27.2",
     "eslint": "^9.39.2",
     "npm-run-all": "^4.1.5",
@@ -91,15 +88,10 @@
     "typescript-eslint": "^8.54.0"
   },
   "dependencies": {
-    "@babel/generator": "^7.29.1",
-    "@babel/parser": "^7.29.0",
-    "@babel/traverse": "^7.29.0",
-    "chokidar": "^5.0.0",
     "reflect-metadata": "^0.2.2",
     "source-map": "^0.7.6",
     "ts-node": "^10.9.2",
     "typedi": "^0.10.0",
-    "vitest": "^4.0.18",
-    "ws": "^8.19.0"
+    "vitest": "^4.0.18"
   }
 }

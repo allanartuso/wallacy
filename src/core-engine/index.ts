@@ -1,10 +1,2 @@
-export * from "./nx-resolver/index";
-export * from "./smart-start/index";
-export * from "./vfs/index";
-export * from "./instrumentation/index";
-export * from "./dependency-graph/index";
-export * from "./scheduler/index";
-export * from "./ipc/server";
-export * from "./config/index";
-export * from "./tracing/index";
-export { startCoreEngine } from "./main";
+export * from "./nx-resolver";
+export * from "./smart-start";
