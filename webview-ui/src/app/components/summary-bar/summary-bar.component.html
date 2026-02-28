@@ -1,26 +1,53 @@
 @if (visible$ | async) {
   @let s = summary$ | async;
+  @let af = activeFilter$ | async;
   @if (s) {
     <section class="summary">
-      <div class="sum-item sum-pass">
+      <div
+        class="sum-item sum-all"
+        [class.active]="af === 'all'"
+        (click)="setFilter('all')"
+        title="Show all tests"
+      >
+        <b>{{ s.passed + s.failed + s.skipped }}</b> all
+      </div>
+      <div
+        class="sum-item sum-pass"
+        [class.active]="af === 'passed'"
+        (click)="setFilter('passed')"
+        title="Filter: passed only"
+      >
         <span class="si">✓</span>
         <b>{{ s.passed }}</b> passed
       </div>
-      <div class="sum-item sum-fail">
+      <div
+        class="sum-item sum-fail"
+        [class.active]="af === 'failed'"
+        (click)="setFilter('failed')"
+        title="Filter: failed only"
+      >
         <span class="si">✗</span>
         <b>{{ s.failed }}</b> failed
       </div>
-      <div class="sum-item sum-skip">
+      <div
+        class="sum-item sum-skip"
+        [class.active]="af === 'skipped'"
+        (click)="setFilter('skipped')"
+        title="Filter: skipped only"
+      >
         <span class="si">○</span>
         <b>{{ s.skipped }}</b> skipped
       </div>
       <div class="sum-item sum-time">
         <span class="si">⏱</span>
-        <b>{{ s.duration | number: "1.0-0" }}</b
+        <b>{{ s.duration | number: '1.0-0' }}</b
         >ms
       </div>
       @if (cached$ | async; as c) {
-        <div class="sum-item sum-cached" title="Cached result — file unchanged since last run">
+        <div
+          class="sum-item sum-cached"
+          title="Cached result — file unchanged since last run"
+        >
           <span class="si">⚡</span>
           cached
         </div>

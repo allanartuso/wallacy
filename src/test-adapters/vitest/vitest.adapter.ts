@@ -595,10 +595,24 @@ export class VitestAdapter implements TestFrameworkAdapter {
       }
     }
 
-    // Note: We intentionally do NOT fall back to entity.moduleId for `file`
-    // because the entity is the test module (spec file), not necessarily the
-    // file that called console.log. Showing the spec file would be misleading
-    // when the log originates from an imported service/utility.
+    // Fall back to entity's moduleId (the test module file) so the webview
+    // can at least show which test context the log came from.
+    if (!file) {
+      if (entity && typeof entity === 'string') {
+        file = entity;
+      } else if (entity && typeof entity === 'object') {
+        const obj = entity as Record<string, any>;
+        if (typeof obj.moduleId === 'string') {
+          file = obj.moduleId;
+        } else if (typeof obj.module?.moduleId === 'string') {
+          file = obj.module.moduleId;
+        } else if (typeof obj.file?.filepath === 'string') {
+          file = obj.file.filepath;
+        } else if (typeof obj.filepath === 'string') {
+          file = obj.filepath;
+        }
+      }
+    }
 
     return {
       stream,

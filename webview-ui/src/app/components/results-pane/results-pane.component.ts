@@ -1,10 +1,13 @@
-import {AsyncPipe} from "@angular/common";
-import {Component} from "@angular/core";
-import {Observable, map} from "rxjs";
-import {RunPhase, TestStateService} from "../../services/test-state.service";
-import {TestResult, VsCodeApiService} from "../../services/vscode-api.service";
-import {basename} from "../../utils/ansi";
-import {TestRowComponent} from "../test-row/test-row.component";
+import { AsyncPipe } from '@angular/common';
+import { Component } from '@angular/core';
+import { Observable, map } from 'rxjs';
+import { RunPhase, TestStateService } from '../../services/test-state.service';
+import {
+  TestResult,
+  VsCodeApiService,
+} from '../../services/vscode-api.service';
+import { basename } from '../../utils/ansi';
+import { TestRowComponent } from '../test-row/test-row.component';
 
 interface FileGroup {
   file: string;
@@ -16,11 +19,11 @@ interface FileGroup {
 }
 
 @Component({
-  selector: "app-results-pane",
+  selector: 'app-results-pane',
   standalone: true,
   imports: [AsyncPipe, TestRowComponent],
-  templateUrl: "./results-pane.component.html",
-  styleUrl: "./results-pane.component.scss",
+  templateUrl: './results-pane.component.html',
+  styleUrl: './results-pane.component.scss',
 })
 export class ResultsPaneComponent {
   readonly phase$: Observable<RunPhase>;
@@ -34,28 +37,30 @@ export class ResultsPaneComponent {
   ) {
     this.phase$ = this.state.phase$;
 
-    this.hasResults$ = this.state.results$.pipe(map((results) => results.length > 0));
+    this.hasResults$ = this.state.filteredResults$.pipe(
+      map((results) => results.length > 0),
+    );
 
     this.spinnerText$ = this.state.phase$.pipe(
       map((phase) => {
         switch (phase) {
-          case "resolving":
-            return "Resolving project\u2026";
-          case "discovering":
-            return "Discovering tests\u2026";
-          case "running":
-            return "Running tests\u2026";
+          case 'resolving':
+            return 'Resolving project\u2026';
+          case 'discovering':
+            return 'Discovering tests\u2026';
+          case 'running':
+            return 'Running tests\u2026';
           default:
-            return "";
+            return '';
         }
       }),
     );
 
-    this.fileGroups$ = this.state.results$.pipe(
+    this.fileGroups$ = this.state.filteredResults$.pipe(
       map((results) => {
         const grouped = new Map<string, TestResult[]>();
         for (const r of results) {
-          const file = r.file || "unknown";
+          const file = r.file || 'unknown';
           if (!grouped.has(file)) {
             grouped.set(file, []);
           }
@@ -66,9 +71,9 @@ export class ResultsPaneComponent {
           file,
           displayName: basename(file),
           tests,
-          passed: tests.filter((t) => t.status === "passed").length,
-          failed: tests.filter((t) => t.status === "failed").length,
-          skipped: tests.filter((t) => t.status === "skipped").length,
+          passed: tests.filter((t) => t.status === 'passed').length,
+          failed: tests.filter((t) => t.status === 'failed').length,
+          skipped: tests.filter((t) => t.status === 'skipped').length,
         }));
       }),
     );

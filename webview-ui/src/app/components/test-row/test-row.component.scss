@@ -86,6 +86,39 @@
   display: none;
 }
 
+.err-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 12px;
+  margin-bottom: 8px;
+  background: var(--diff-del);
+  border-radius: var(--r);
+  border-left: 3px solid var(--red);
+  cursor: pointer;
+  user-select: none;
+}
+
+.err-header:hover {
+  opacity: 0.9;
+}
+
+.err-toggle {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.err-summary {
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--red);
+}
+
 .err-msg {
   font-family: var(--mono);
   font-size: 12px;

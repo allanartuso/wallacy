@@ -9,45 +9,63 @@
       {{ result.name }}
     </span>
     <span class="test-dur">{{ result.duration || 0 }}ms</span>
-    @if (result.line && result.file) {
-      <a class="test-link" (click)="openTestLocation(); $event.stopPropagation()"> :{{ result.line }} </a>
+    @if (fileLabel) {
+      <a
+        class="test-link"
+        (click)="openTestLocation(); $event.stopPropagation()"
+        title="Open in editor"
+      >
+        {{ fileLabel }}
+      </a>
     }
   </div>
 
   <!-- Error details (shown when expanded) -->
   @if (expanded && result.error) {
     <div class="test-error">
-      <!-- Error message -->
-      <div class="err-msg">{{ errorMessage }}</div>
+      <!-- Collapsible error message -->
+      <div class="err-header" (click)="toggleError(); $event.stopPropagation()">
+        <span class="err-toggle">{{ errorExpanded ? '▾' : '▸' }}</span>
+        <span class="err-summary">{{ errorMessage }}</span>
+      </div>
 
-      <!-- Expected vs Actual -->
-      @if (hasExpectedActual) {
-        <div class="diff-box">
-          <div class="diff-title">Expected vs Actual</div>
-          <div class="diff-cols">
-            <div class="diff-col diff-exp">
-              <span class="diff-lbl diff-lbl-exp">− Expected</span>
-              <span [innerHTML]="expectedFormatted"></span>
-            </div>
-            <div class="diff-col diff-act">
-              <span class="diff-lbl diff-lbl-act">+ Actual</span>
-              <span [innerHTML]="actualFormatted"></span>
+      @if (errorExpanded) {
+        <!-- Error message (full) -->
+        <div class="err-msg">{{ errorMessage }}</div>
+
+        <!-- Expected vs Actual -->
+        @if (hasExpectedActual) {
+          <div class="diff-box">
+            <div class="diff-title">Expected vs Actual</div>
+            <div class="diff-cols">
+              <div class="diff-col diff-exp">
+                <span class="diff-lbl diff-lbl-exp">− Expected</span>
+                <span [innerHTML]="expectedFormatted"></span>
+              </div>
+              <div class="diff-col diff-act">
+                <span class="diff-lbl diff-lbl-act">+ Actual</span>
+                <span [innerHTML]="actualFormatted"></span>
+              </div>
             </div>
           </div>
-        </div>
-      }
+        }
 
-      <!-- ANSI Diff -->
-      @if (diffHtml) {
-        <div class="diff-box">
-          <div class="diff-title">Diff</div>
-          <div class="ansi-diff" [innerHTML]="diffHtml"></div>
-        </div>
-      }
+        <!-- ANSI Diff -->
+        @if (diffHtml) {
+          <div class="diff-box">
+            <div class="diff-title">Diff</div>
+            <div class="ansi-diff" [innerHTML]="diffHtml"></div>
+          </div>
+        }
 
-      <!-- Stack trace -->
-      @if (stackHtml) {
-        <div class="stack" [innerHTML]="stackHtml" (click)="onStackLinkClick($event)"></div>
+        <!-- Stack trace -->
+        @if (stackHtml) {
+          <div
+            class="stack"
+            [innerHTML]="stackHtml"
+            (click)="onStackLinkClick($event)"
+          ></div>
+        }
       }
     </div>
   }

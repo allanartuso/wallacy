@@ -12,10 +12,46 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+  opacity: 0.7;
+  transition:
+    opacity 0.15s,
+    background 0.15s;
+  user-select: none;
+}
+
+.sum-item:hover {
+  opacity: 1;
+  background: var(--border);
+}
+
+.sum-item.active {
+  opacity: 1;
+  background: var(--border);
+  font-weight: 600;
+}
+
+.sum-time,
+.sum-cached {
+  cursor: default;
+  opacity: 1;
+}
+
+.sum-time:hover,
+.sum-cached:hover {
+  background: transparent;
 }
 
 .si {
   font-size: 14px;
+}
+
+.sum-all {
+  .si {
+    color: var(--fg);
+  }
 }
 
 .sum-pass .si {

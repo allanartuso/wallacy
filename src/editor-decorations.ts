@@ -468,24 +468,24 @@ export class EditorDecorations {
         continue;
       }
 
-      // Determine the line — use the test definition line, fall back to the
-      // assertion failure line parsed from the stack trace.
-      let line =
-        (result.line ??
-          this.parseErrorLine(result.error.stack, filePath) ??
-          1) - 1;
+      // Prefer the assertion failure line from the stack trace (underlines
+      // the `expect(...)` call). Fall back to the test definition line.
+      const assertionLine = this.parseErrorLine(result.error.stack, filePath);
+      let line = (assertionLine ?? result.line ?? 1) - 1;
       if (line < 0) {
         line = 0;
       }
 
-      // Try to underline the `it(...)` / `test(...)` call instead of the whole line
+      // Try to underline the `expect(...)` call (or `it(...)` if on a test
+      // definition line) instead of the whole line.
       let range: vscode.Range;
       if (document && line < document.lineCount) {
         const lineText = document.lineAt(line).text;
+        const expectMatch = lineText.match(/\b(expect|assert)\s*\(/);
         const itMatch = lineText.match(/\b(it|test|xit|fit)\s*\(/);
-        if (itMatch && itMatch.index !== undefined) {
-          // Underline from `it(` to the end of the line (covers the test name)
-          range = new vscode.Range(line, itMatch.index, line, lineText.length);
+        const match = expectMatch ?? itMatch;
+        if (match && match.index !== undefined) {
+          range = new vscode.Range(line, match.index, line, lineText.length);
         } else {
           // Underline the whole non-whitespace part of the line
           const firstNonWhitespace = lineText.search(/\S/);
@@ -530,6 +530,7 @@ export class EditorDecorations {
   /**
    * Parse the first relevant line number from a Vitest error stack trace.
    * Looks for patterns like `❯ src/file.ts:28:65` or `at src/file.ts:42:15`.
+   * Only returns lines that refer to the given filePath (ignoring node_modules).
    */
   private parseErrorLine(
     stack: string | undefined,
@@ -538,15 +539,32 @@ export class EditorDecorations {
     if (!stack) {
       return undefined;
     }
+    const normalizedTarget = this.normalizePath(filePath);
     // Match Vitest's ❯ marker or standard `at` lines
     const linePattern =
-      /(?:❯\s*|at\s+.*?)(?:[A-Za-z]:[\\/].*?|[\w./\\-]+):(\d+)/g;
+      /(?:❯\s*|at\s+.*?)([A-Za-z]:[\\/][^\s:]+|[\w./\\-]+):(\d+)/g;
     let match: RegExpExecArray | null;
     while ((match = linePattern.exec(stack)) !== null) {
-      const fullMatch = match[0];
-      // Extract the file portion — check if it refers to our test file (not node_modules)
-      if (!fullMatch.includes('node_modules')) {
-        return parseInt(match[1], 10);
+      const matchedFile = match[1];
+      // Skip node_modules
+      if (matchedFile.includes('node_modules')) {
+        continue;
+      }
+      // Check if this stack frame refers to the test file
+      const normalizedMatch = this.normalizePath(matchedFile);
+      if (
+        normalizedMatch === normalizedTarget ||
+        normalizedTarget.endsWith('/' + normalizedMatch) ||
+        normalizedMatch.endsWith('/' + normalizedTarget)
+      ) {
+        return parseInt(match[2], 10);
+      }
+    }
+    // No match for the specific file — return the first non-node_modules line
+    linePattern.lastIndex = 0;
+    while ((match = linePattern.exec(stack)) !== null) {
+      if (!match[1].includes('node_modules')) {
+        return parseInt(match[2], 10);
       }
     }
     return undefined;
