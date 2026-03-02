@@ -16,7 +16,9 @@
   "activationEvents": [
     "onCommand:wallacy.smartStart",
     "onCommand:wallacy.helloWorld",
-    "onCommand:wallacy.stopEngine"
+    "onCommand:wallacy.stopEngine",
+    "onCommand:wallacy.evalConsoleLogs",
+    "onCommand:wallacy.toggleLiveConsole"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -44,6 +46,16 @@
         "command": "wallacy.forceRerun",
         "title": "Wallacy: Force Re-run (Skip Cache)",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "wallacy.evalConsoleLogs",
+        "title": "Wallacy: Evaluate Console Logs",
+        "icon": "$(output)"
+      },
+      {
+        "command": "wallacy.toggleLiveConsole",
+        "title": "Wallacy: Toggle Live Console Evaluation",
+        "icon": "$(eye)"
       }
     ],
     "keybindings": [
@@ -51,6 +63,12 @@
         "command": "wallacy.smartStart",
         "key": "ctrl+shift+q",
         "mac": "cmd+shift+q",
+        "when": "editorFocus && resourceLangId =~ /^(typescript|javascript|typescriptreact|javascriptreact)$/"
+      },
+      {
+        "command": "wallacy.evalConsoleLogs",
+        "key": "ctrl+shift+l",
+        "mac": "cmd+shift+l",
         "when": "editorFocus && resourceLangId =~ /^(typescript|javascript|typescriptreact|javascriptreact)$/"
       }
     ]
